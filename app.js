@@ -93,6 +93,7 @@ const REDEEM_CODES = {
     'WELCOMEPETDORO': { coins: 300, unlockPet: 'cat', title: '+300 Coins (Cat Unlocked)' },
     'DRAGONLORD': { coins: 1000, unlockPet: 'dragon', title: '+1000 Coins (Dragon Unlocked)' },
     'TEMANNUGAS': { coins: 150, unlockPet: null, title: '+150 Coins' },
+    'BYANKEREN': { coins: 500, unlockPet: null, title: '+500 Coins' },
 };
 
 /* ============================================================
