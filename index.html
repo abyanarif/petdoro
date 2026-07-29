@@ -325,6 +325,36 @@
           </div>
         </div>
 
+        <!-- Subject Tag & Task Selector -->
+        <div id="pre-session-task-container" class="mb-3 p-3 bg-surface-card/90 border border-surface-border rounded-2xl transition-all">
+          <div class="flex items-center justify-between mb-2">
+            <span class="text-xs font-bold text-gray-300 flex items-center gap-1">
+              <i data-lucide="tag" class="w-3.5 h-3.5 text-primary-light"></i> Subjek &amp; Tugas Fokus
+            </span>
+          </div>
+
+          <!-- Subject Tag Chips -->
+          <div class="flex gap-1.5 overflow-x-auto pb-1 mb-2" id="subject-tag-selector">
+            <button type="button" class="tag-chip active" data-tag="Coding">💻 Coding</button>
+            <button type="button" class="tag-chip" data-tag="Math">📐 Math</button>
+            <button type="button" class="tag-chip" data-tag="Thesis">📝 Thesis</button>
+            <button type="button" class="tag-chip" data-tag="General">📚 General</button>
+            <button type="button" class="tag-chip" data-tag="custom" id="btn-custom-tag-chip">✏️ Custom</button>
+          </div>
+
+          <!-- Custom Tag Input (hidden by default) -->
+          <div id="custom-tag-input-wrap" class="hidden mb-2">
+            <input type="text" id="custom-subject-input" placeholder="Subjek Baru..." maxlength="15"
+              class="w-full px-3 py-1.5 bg-surface border border-surface-border rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-primary" />
+          </div>
+
+          <!-- Task Description Input -->
+          <div>
+            <input type="text" id="task-note-input" placeholder="Detail tugas (cth: Finish Chapter 1)..." maxlength="40"
+              class="w-full px-3 py-1.5 bg-surface/80 border border-surface-border/80 rounded-xl text-xs text-white placeholder-gray-500 focus:outline-none focus:border-primary transition-all" />
+          </div>
+        </div>
+
         <!-- Pet + Timer Card -->
         <div class="relative rounded-3xl overflow-hidden mb-4" id="timer-card">
           <!-- Card Background Gradient -->
@@ -332,6 +362,12 @@
 
           <!-- Card Content -->
           <div class="relative p-5 flex flex-col items-center">
+
+            <!-- Active Task Display Banner -->
+            <div id="active-task-display" class="mb-2 px-3 py-1 bg-surface-card/90 border border-primary/40 rounded-full flex items-center gap-2 text-xs max-w-full overflow-hidden shadow-md">
+              <span id="active-subject-badge" class="font-black text-primary-light bg-primary/25 px-2 py-0.5 rounded-md text-[10px] uppercase tracking-wider">💻 Coding</span>
+              <span id="active-task-text" class="text-gray-300 font-semibold truncate max-w-[140px]">Focusing...</span>
+            </div>
 
             <!-- Pet Stage Label + Custom Name -->
             <div class="flex flex-col items-center gap-1 mb-3">
@@ -628,6 +664,16 @@
           </div>
         </div>
 
+        <!-- Subject Focus Time Breakdown -->
+        <div class="mb-5 bg-surface-card/80 border border-surface-border rounded-2xl p-4 shadow-lg">
+          <h3 class="text-base font-bold text-white mb-3 flex items-center gap-2">
+            <i data-lucide="tag" class="w-4 h-4 text-primary-light"></i> Fokus per Subjek / Tag
+          </h3>
+          <div class="space-y-3" id="subject-stats-list">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+
         <!-- Achievements -->
         <div class="mb-4">
           <h3 class="text-base font-bold text-white mb-3">🏅 Achievements</h3>
@@ -645,6 +691,25 @@
         </div>
       </section>
 
+      <!-- ══════════════════════════════════════
+           PAGE: DAILY QUESTS
+      ══════════════════════════════════════ -->
+      <section id="page-quests" class="page-section hidden animate-fade-in">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-xl font-black text-white mb-0.5">Misi Harian 🎯</h2>
+            <p class="text-xs text-gray-400">Selesaikan misi harian &amp; kumpulkan koin bonus!</p>
+          </div>
+          <div class="text-[10px] bg-primary/20 border border-primary/30 text-primary-light px-2.5 py-1 rounded-full font-bold flex items-center gap-1">
+            <i data-lucide="rotate-cw" class="w-3 h-3"></i> Reset Tiap Hari
+          </div>
+        </div>
+
+        <div class="space-y-3 mb-4" id="quests-list">
+          <!-- Filled by JS -->
+        </div>
+      </section>
+
     </main>
 
     <!-- ── BOTTOM NAV ─────────────────────────────────────── -->
@@ -652,6 +717,10 @@
       <button class="nav-item active" data-page="home">
         <i data-lucide="timer" class="w-5 h-5"></i>
         <span>Timer</span>
+      </button>
+      <button class="nav-item" data-page="quests">
+        <i data-lucide="target" class="w-5 h-5"></i>
+        <span>Quests</span>
       </button>
       <button class="nav-item" data-page="shop">
         <i data-lucide="paw-print" class="w-5 h-5"></i>

@@ -87,6 +87,38 @@ const CONFIG = {
         break: { emoji: '😌', text: 'Santai dulu~' },
         petted: { emoji: '😍', text: 'Manja!' },
     },
+    DAILY_QUESTS: [
+        {
+            id: 'quest_session',
+            icon: '🎯',
+            title: 'Focus Pioneer',
+            desc: 'Lengkapi 1 Sesi Fokus Hari Ini',
+            reward: 20,
+            target: 1,
+            unit: 'sesi',
+            getProgress: (s, dq) => s.todaySessions || 0,
+        },
+        {
+            id: 'quest_time',
+            icon: '⏱️',
+            title: 'Time Master',
+            desc: 'Kumpulkan 50 menit waktu fokus hari ini',
+            reward: 50,
+            target: 50,
+            unit: 'menit',
+            getProgress: (s, dq) => dq.todayMinutes || 0,
+        },
+        {
+            id: 'quest_streak',
+            icon: '🔥',
+            title: 'Streak Guardian',
+            desc: 'Pertahankan 3-Day Streak',
+            reward: 100,
+            target: 3,
+            unit: 'hari',
+            getProgress: (s, dq) => s.streak || 0,
+        },
+    ],
 };
 
 const REDEEM_CODES = {
@@ -124,6 +156,14 @@ const DEFAULT_STATE = () => ({
     unlockedAchievements: [],
     tipDismissed: false,
     redeemedCodes: [],                           // list of claimed code strings
+    currentSubjectTag: 'Coding',
+    currentTaskNote: '',
+    subjectStats: { Coding: 0, Math: 0, Thesis: 0, General: 0 },
+    dailyQuests: {
+        date: new Date().toDateString(),
+        todayMinutes: 0,
+        claimed: { quest_session: false, quest_time: false, quest_streak: false }
+    },
 });
 
 let state = DEFAULT_STATE();
@@ -135,7 +175,7 @@ function loadState() {
             const parsed = JSON.parse(saved);
             state = deepMerge(DEFAULT_STATE(), parsed);
         }
-        // Migration & sanitization for unlocked pets & redeemed codes
+        // Migration & sanitization for unlocked pets & redeemed codes & quests
         if (!state.unlockedPets || !Array.isArray(state.unlockedPets)) {
             state.unlockedPets = ['crocodile', 'owl'];
         }
@@ -144,6 +184,21 @@ function loadState() {
 
         if (!state.redeemedCodes || !Array.isArray(state.redeemedCodes)) {
             state.redeemedCodes = [];
+        }
+
+        if (!state.currentSubjectTag) state.currentSubjectTag = 'Coding';
+        if (state.currentTaskNote === undefined) state.currentTaskNote = '';
+        if (!state.subjectStats || typeof state.subjectStats !== 'object') {
+            state.subjectStats = { Coding: 0, Math: 0, Thesis: 0, General: 0 };
+        }
+
+        const todayStr = new Date().toDateString();
+        if (!state.dailyQuests || state.dailyQuests.date !== todayStr) {
+            state.dailyQuests = {
+                date: todayStr,
+                todayMinutes: 0,
+                claimed: { quest_session: false, quest_time: false, quest_streak: false }
+            };
         }
 
         if (!state.pets) state.pets = {};
@@ -689,8 +744,37 @@ const UI = (() => {
         els.bigStatCoins().textContent = state.totalCoins;
         els.bigStatStreak().textContent = state.maxStreak;
 
+        renderSubjectStats();
         renderAchievements();
         renderWeeklyChart();
+    }
+
+    function renderSubjectStats() {
+        const list = document.getElementById('subject-stats-list');
+        if (!list) return;
+        list.innerHTML = '';
+
+        const stats = state.subjectStats || {};
+        const entries = Object.entries(stats);
+        const totalMin = entries.reduce((acc, [, val]) => acc + val, 0) || 1;
+        const tagIcons = { Coding: '💻', Math: '📐', Thesis: '📝', General: '📚' };
+
+        entries.sort((a, b) => b[1] - a[1]).forEach(([tag, min]) => {
+            const pct = Math.round((min / totalMin) * 100);
+            const icon = tagIcons[tag] || '🏷️';
+            const row = document.createElement('div');
+            row.className = 'space-y-1';
+            row.innerHTML = `
+        <div class="flex justify-between items-center text-xs font-semibold">
+          <span class="text-white flex items-center gap-1.5">${icon} ${tag}</span>
+          <span class="text-gray-400">${min} menit (${pct}%)</span>
+        </div>
+        <div class="h-2 bg-surface rounded-full overflow-hidden">
+          <div class="h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all duration-500" style="width: ${pct}%"></div>
+        </div>
+      `;
+            list.appendChild(row);
+        });
     }
 
     function renderAchievements() {
@@ -734,6 +818,122 @@ const UI = (() => {
         });
     }
 
+    // ── DAILY QUESTS RENDER ───────────────────────────────────
+    function renderQuests() {
+        const list = document.getElementById('quests-list');
+        if (!list) return;
+        list.innerHTML = '';
+
+        const todayStr = new Date().toDateString();
+        if (!state.dailyQuests || state.dailyQuests.date !== todayStr) {
+            state.dailyQuests = {
+                date: todayStr,
+                todayMinutes: 0,
+                claimed: { quest_session: false, quest_time: false, quest_streak: false }
+            };
+            saveState();
+        }
+
+        CONFIG.DAILY_QUESTS.forEach(q => {
+            const progress = q.getProgress(state, state.dailyQuests);
+            const isCompleted = progress >= q.target;
+            const isClaimed = !!state.dailyQuests.claimed?.[q.id];
+            const pct = Math.min(100, Math.round((progress / q.target) * 100));
+
+            const card = document.createElement('div');
+            card.className = `quest-card${isCompleted ? ' completed' : ''}`;
+            card.innerHTML = `
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-xl bg-primary/20 border border-primary/30 flex items-center justify-center text-xl flex-shrink-0">
+            ${q.icon}
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-2 mb-0.5">
+              <h4 class="text-sm font-extrabold text-white truncate">${q.title}</h4>
+              <span class="text-xs font-black text-amber-300 bg-amber-500/20 border border-amber-400/30 px-2 py-0.5 rounded-full flex-shrink-0">
+                🪙 +${q.reward}
+              </span>
+            </div>
+            <p class="text-xs text-gray-400">${q.desc}</p>
+          </div>
+        </div>
+        <div class="space-y-1">
+          <div class="flex justify-between text-[11px] font-semibold text-gray-400">
+            <span>Progress</span>
+            <span>${Math.min(progress, q.target)}/${q.target} ${q.unit}</span>
+          </div>
+          <div class="h-2 bg-surface rounded-full overflow-hidden">
+            <div class="h-full bg-gradient-to-r from-primary to-secondary rounded-full transition-all duration-500" style="width: ${pct}%"></div>
+          </div>
+        </div>
+        <div>
+          ${isClaimed
+                    ? `<button class="quest-claim-btn claimed w-full" disabled>Sudah Diklaim ✓</button>`
+                    : isCompleted
+                        ? `<button class="quest-claim-btn w-full btn-claim-quest" data-quest="${q.id}">Klaim Hadiah 🎁 (+${q.reward} Koin)</button>`
+                        : `<button class="quest-claim-btn claimed w-full" disabled>Belum Selesai (${progress}/${q.target})</button>`
+                }
+        </div>
+      `;
+            list.appendChild(card);
+        });
+
+        // Add event listeners to claim buttons
+        list.querySelectorAll('.btn-claim-quest').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const qId = btn.dataset.quest;
+                claimQuestReward(qId);
+            });
+        });
+
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    }
+
+    function claimQuestReward(questId) {
+        const q = CONFIG.DAILY_QUESTS.find(item => item.id === questId);
+        if (!q) return;
+
+        if (!state.dailyQuests) state.dailyQuests = { date: new Date().toDateString(), todayMinutes: 0, claimed: {} };
+        if (!state.dailyQuests.claimed) state.dailyQuests.claimed = {};
+
+        if (state.dailyQuests.claimed[questId]) {
+            showToast('⚠️', 'Misi ini sudah pernah kamu klaim hari ini!');
+            return;
+        }
+
+        const progress = q.getProgress(state, state.dailyQuests);
+        if (progress < q.target) {
+            showToast('⚠️', 'Misi belum selesai!');
+            return;
+        }
+
+        state.coins += q.reward;
+        state.totalCoins += q.reward;
+        state.dailyQuests.claimed[questId] = true;
+
+        saveState();
+
+        renderHeader();
+        renderQuests();
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+
+        showToast('🎉', `Selamat! Kamu klaim +${q.reward} Koin!`);
+    }
+
+    // ── ACTIVE TASK BANNER DISPLAY ────────────────────────────
+    function updateActiveTaskDisplay() {
+        const tagBadge = document.getElementById('active-subject-badge');
+        const taskText = document.getElementById('active-task-text');
+        const tag = state.currentSubjectTag || 'Coding';
+        const task = (state.currentTaskNote || '').trim() || 'Focusing...';
+
+        const tagIcons = { Coding: '💻', Math: '📐', Thesis: '📝', General: '📚' };
+        const icon = tagIcons[tag] || '🏷️';
+
+        if (tagBadge) tagBadge.textContent = `${icon} ${tag}`;
+        if (taskText) taskText.textContent = task;
+    }
+
     // ── TIP ───────────────────────────────────────────────────
     function renderTip() {
         const tipCard = els.tipCard();
@@ -752,6 +952,7 @@ const UI = (() => {
         renderHeader();
         renderPet();
         renderSessionDots();
+        updateActiveTaskDisplay();
         renderTip();
         lucide.createIcons();
     }
@@ -769,6 +970,8 @@ const UI = (() => {
         setActivePetUI,
         buyPet,
         renderStats,
+        renderQuests,
+        updateActiveTaskDisplay,
         renderAll,
         renderTip,
     };
@@ -1005,6 +1208,24 @@ const Game = (() => {
         state.todaySessions += 1;
         state.totalMinutes += durationMin;
 
+        // Categorize focus time by Subject Tag
+        const tag = state.currentSubjectTag || 'Coding';
+        if (!state.subjectStats || typeof state.subjectStats !== 'object') {
+            state.subjectStats = { Coding: 0, Math: 0, Thesis: 0, General: 0 };
+        }
+        state.subjectStats[tag] = (state.subjectStats[tag] || 0) + durationMin;
+
+        // Update Daily Quest focus minutes
+        const todayStr = new Date().toDateString();
+        if (!state.dailyQuests || state.dailyQuests.date !== todayStr) {
+            state.dailyQuests = {
+                date: todayStr,
+                todayMinutes: 0,
+                claimed: { quest_session: false, quest_time: false, quest_streak: false }
+            };
+        }
+        state.dailyQuests.todayMinutes = (state.dailyQuests.todayMinutes || 0) + durationMin;
+
         // Update weekly data (day of week 0=Mon)
         const dayIdx = (new Date().getDay() + 6) % 7;
         state.weeklyData[dayIdx] = (state.weeklyData[dayIdx] || 0) + 1;
@@ -1171,7 +1392,7 @@ const Game = (() => {
    7. NAVIGATION & PAGE SWITCHING
    ============================================================ */
 const Nav = (() => {
-    const pages = { home: 'page-home', shop: 'page-shop', stats: 'page-stats' };
+    const pages = { home: 'page-home', quests: 'page-quests', shop: 'page-shop', stats: 'page-stats' };
     let currentPage = 'home';
 
     function goTo(page) {
@@ -1188,9 +1409,17 @@ const Nav = (() => {
         });
 
         // Re-render page-specific content
+        if (page === 'quests') UI.renderQuests();
         if (page === 'shop') UI.renderShop();
         if (page === 'stats') UI.renderStats();
-        if (page === 'home') UI.renderTip();
+        if (page === 'home') {
+            UI.renderTip();
+            UI.updateActiveTaskDisplay();
+        }
+
+        if (typeof lucide !== 'undefined') {
+            lucide.createIcons();
+        }
     }
 
     function init() {
@@ -1499,6 +1728,71 @@ const App = (() => {
                 }
             });
         }
+
+        // Restore pre-session task & subject tag from state
+        const currentTag = state.currentSubjectTag || 'Coding';
+        const currentTask = state.currentTaskNote || '';
+
+        const taskNoteInput = document.getElementById('task-note-input');
+        if (taskNoteInput) taskNoteInput.value = currentTask;
+
+        const tagChips = document.querySelectorAll('#subject-tag-selector .tag-chip');
+        let matchedChip = false;
+        tagChips.forEach(chip => {
+            if (chip.dataset.tag === currentTag) {
+                chip.classList.add('active');
+                matchedChip = true;
+            } else {
+                chip.classList.remove('active');
+            }
+        });
+        if (!matchedChip) {
+            const customChip = document.getElementById('btn-custom-tag-chip');
+            if (customChip) customChip.classList.add('active');
+            const customWrap = document.getElementById('custom-tag-input-wrap');
+            if (customWrap) customWrap.classList.remove('hidden');
+            const customInput = document.getElementById('custom-subject-input');
+            if (customInput) customInput.value = currentTag;
+        }
+
+        // Subject Tag selector chips
+        tagChips.forEach(chip => {
+            chip.addEventListener('click', () => {
+                tagChips.forEach(c => c.classList.remove('active'));
+                chip.classList.add('active');
+
+                const tagVal = chip.dataset.tag;
+                const customWrap = document.getElementById('custom-tag-input-wrap');
+
+                if (tagVal === 'custom') {
+                    if (customWrap) customWrap.classList.remove('hidden');
+                    const customInput = document.getElementById('custom-subject-input');
+                    if (customInput) {
+                        customInput.focus();
+                        state.currentSubjectTag = customInput.value.trim() || 'Custom';
+                    }
+                } else {
+                    if (customWrap) customWrap.classList.add('hidden');
+                    state.currentSubjectTag = tagVal;
+                }
+
+                saveState();
+                UI.updateActiveTaskDisplay();
+            });
+        });
+
+        document.getElementById('custom-subject-input')?.addEventListener('input', (e) => {
+            const val = e.target.value.trim();
+            state.currentSubjectTag = val || 'Custom';
+            saveState();
+            UI.updateActiveTaskDisplay();
+        });
+
+        document.getElementById('task-note-input')?.addEventListener('input', (e) => {
+            state.currentTaskNote = e.target.value;
+            saveState();
+            UI.updateActiveTaskDisplay();
+        });
 
         // Settings button
         document.getElementById('btn-settings').addEventListener('click', () => {
