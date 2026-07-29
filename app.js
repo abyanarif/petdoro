@@ -12,13 +12,15 @@
 const CONFIG = {
   STORAGE_KEY: 'petdoro_v1',
   SESSION_MODES: {
-    focus: { label: '🎯 Focus',       duration: 25 * 60, exp: 50,  coins: 10, label_short: 'Focus' },
-    short: { label: '☕ Short Break', duration:  5 * 60, exp: 10,  coins:  3, label_short: 'Short Break' },
-    long:  { label: '🌙 Long Break',  duration: 15 * 60, exp: 20,  coins:  5, label_short: 'Long Break' },
+    focus: { label: '🎯 Focus',       duration: 25 * 60, exp: 50,  coins: 50, label_short: 'Focus' },
+    short: { label: '☕ Short Break', duration:  5 * 60, exp: 10,  coins:  5, label_short: 'Short Break' },
+    long:  { label: '🌙 Long Break',  duration: 15 * 60, exp: 20,  coins: 15, label_short: 'Long Break' },
   },
   PETS: {
     crocodile: {
       name: 'Buaya Kece',
+      displayName: 'Buaya',
+      cost: 0,
       stages: [
         { label: '🥚 Hatchling', image: 'animal_assets/crocodile_0.png', glowClass: 'pet-glow-0' },
         { label: '🐊 Adolescent', image: 'animal_assets/crocodile_1.png', glowClass: 'pet-glow-1' },
@@ -26,15 +28,39 @@ const CONFIG = {
       ],
     },
     owl: {
-      name: 'Hantu Bijak',
+      name: 'Burung Hantu Bijak',
+      displayName: 'Burung Hantu',
+      cost: 0,
       stages: [
         { label: '🥚 Hatchling', image: 'animal_assets/owl_0.png',  glowClass: 'pet-glow-0' },
         { label: '🦉 Adolescent', image: 'animal_assets/owl_1.png',  glowClass: 'pet-glow-1' },
         { label: '🌙 Evolved', image: 'animal_assets/owl_2.png',  glowClass: 'pet-glow-2' },
       ],
     },
+    cat: {
+      name: 'Kucing Imut',
+      displayName: 'Kucing',
+      cost: 300,
+      stages: [
+        { label: '🥚 Hatchling', image: 'animal_assets/cat_0.png', glowClass: 'pet-glow-0' },
+        { label: '🐱 Kitten',    image: 'animal_assets/cat_1.png', glowClass: 'pet-glow-1' },
+        { label: '🐈 Cat',       image: 'animal_assets/cat_2.png', glowClass: 'pet-glow-2' },
+        { label: '👑 Evolved',   image: 'animal_assets/cat_3.png', glowClass: 'pet-glow-2' },
+      ],
+    },
+    dragon: {
+      name: 'Naga Api',
+      displayName: 'Naga',
+      cost: 1000,
+      stages: [
+        { label: '🥚 Hatchling', image: 'animal_assets/dragon_0.png', glowClass: 'pet-glow-0' },
+        { label: '🐉 Drake',     image: 'animal_assets/dragon_1.png', glowClass: 'pet-glow-1' },
+        { label: '🦖 Wyvern',    image: 'animal_assets/dragon_2.png', glowClass: 'pet-glow-2' },
+        { label: '🔥 Evolved',   image: 'animal_assets/dragon_3.png', glowClass: 'pet-glow-2' },
+      ],
+    },
   },
-  EXP_PER_STAGE: [100, 250, 999999], // EXP needed to reach next stage
+  EXP_PER_STAGE: [100, 250, 500, 999999], // EXP needed to reach next stage
   TIPS: [
     'Mulai sesi fokus untuk merawat hewan peliharaanmu! 🐾',
     'Hewan peliharaanmu butuh 25 menit fokus untuk naik level! ⚡',
@@ -69,11 +95,14 @@ const CONFIG = {
 const DEFAULT_STATE = () => ({
   user: { name: 'Trainer', photoUrl: '' },
   activePet: 'crocodile',
-  petCustomNames: { crocodile: '', owl: '' }, // custom names per pet
+  unlockedPets: ['crocodile', 'owl'],
+  petCustomNames: { crocodile: '', owl: '', cat: '', dragon: '' }, // custom names per pet
   onboardingDone: false,                       // first-run flag
   pets: {
-    crocodile: { stage: 0, exp: 0 },
-    owl:       { stage: 0, exp: 0 },
+    crocodile: { name: 'Buaya Kece', stage: 0, level: 1, exp: 0, maxExp: 100 },
+    owl:       { name: 'Burung Hantu Bijak', stage: 0, level: 1, exp: 0, maxExp: 100 },
+    cat:       { name: 'Kucing Imut', stage: 0, level: 1, exp: 0, maxExp: 100 },
+    dragon:    { name: 'Naga Api', stage: 0, level: 1, exp: 0, maxExp: 100 },
   },
   totalSessions:  0,
   todaySessions:  0,
@@ -98,6 +127,32 @@ function loadState() {
       const parsed = JSON.parse(saved);
       state = deepMerge(DEFAULT_STATE(), parsed);
     }
+    // Migration & sanitization for unlocked pets & individual pet state
+    if (!state.unlockedPets || !Array.isArray(state.unlockedPets)) {
+      state.unlockedPets = ['crocodile', 'owl'];
+    }
+    if (!state.unlockedPets.includes('crocodile')) state.unlockedPets.push('crocodile');
+    if (!state.unlockedPets.includes('owl')) state.unlockedPets.push('owl');
+
+    if (!state.pets) state.pets = {};
+    Object.keys(CONFIG.PETS).forEach(petKey => {
+      if (!state.pets[petKey]) {
+        state.pets[petKey] = {
+          name: CONFIG.PETS[petKey].name,
+          stage: 0,
+          level: 1,
+          exp: 0,
+          maxExp: CONFIG.EXP_PER_STAGE[0]
+        };
+      } else {
+        const pet = state.pets[petKey];
+        if (pet.stage === undefined) pet.stage = 0;
+        if (pet.level === undefined) pet.level = pet.stage + 1;
+        if (pet.exp === undefined) pet.exp = 0;
+        if (!pet.maxExp) pet.maxExp = CONFIG.EXP_PER_STAGE[pet.stage] || 100;
+        if (!pet.name) pet.name = CONFIG.PETS[petKey].name;
+      }
+    });
   } catch (e) {
     console.warn('[Petdoro] Failed to load state:', e);
   }
@@ -326,11 +381,11 @@ const UI = (() => {
   // ── HEADER ────────────────────────────────────────────────
   function renderHeader() {
     const petKey   = state.activePet;
-    const petData  = state.pets[petKey];
+    const petData  = state.pets[petKey] || { stage: 0, level: 1, exp: 0, maxExp: 100 };
     const stageIdx = petData.stage;
-    const maxExp   = CONFIG.EXP_PER_STAGE[stageIdx];
+    const maxExp   = petData.maxExp || CONFIG.EXP_PER_STAGE[stageIdx];
     const expPct   = Math.min(100, (petData.exp / maxExp) * 100);
-    const level    = stageIdx + 1;
+    const level    = petData.level || (stageIdx + 1);
 
     els.coinsDisplay().textContent    = state.coins;
     els.expDisplay().textContent      = petData.exp;
@@ -351,7 +406,7 @@ const UI = (() => {
   // ── PET ───────────────────────────────────────────────────
   function renderPet() {
     const petKey   = state.activePet;
-    const petData  = state.pets[petKey];
+    const petData  = state.pets[petKey] || { stage: 0, level: 1, exp: 0, maxExp: 100 };
     const petCfg   = CONFIG.PETS[petKey];
     const stageCfg = petCfg.stages[petData.stage];
     const customName = (state.petCustomNames?.[petKey] || '').trim();
@@ -367,7 +422,7 @@ const UI = (() => {
     const levelEl   = document.getElementById('pet-level-label');
     const nameEl    = document.getElementById('pet-custom-name');
     if (speciesEl) speciesEl.textContent = petCfg.name;
-    if (levelEl)   levelEl.textContent   = `Lv. ${petData.stage + 1}`;
+    if (levelEl)   levelEl.textContent   = `Lv. ${petData.level || (petData.stage + 1)}`;
     if (nameEl)    nameEl.textContent     = customName || '–';
   }
 
@@ -410,12 +465,23 @@ const UI = (() => {
   function setSandclockVisible(visible) {
     const sc = els.lottiesSandclock();
     const ar = els.auraRing();
+    const petContainer = document.getElementById('pet-container');
     if (visible) {
-      sc.style.opacity = '0.6';
+      sc.style.opacity = '1';
       ar.classList.add('running');
+      if (petContainer) {
+        petContainer.style.opacity = '0';
+        petContainer.style.transform = 'scale(0.7)';
+        petContainer.style.pointerEvents = 'none';
+      }
     } else {
       sc.style.opacity = '0';
       ar.classList.remove('running');
+      if (petContainer) {
+        petContainer.style.opacity = '1';
+        petContainer.style.transform = 'scale(1)';
+        petContainer.style.pointerEvents = 'auto';
+      }
     }
   }
 
@@ -443,48 +509,123 @@ const UI = (() => {
     }
   }
 
+  // ── BUY PET STORE MECHANIC ─────────────────────────────────
+  function buyPet(petKey) {
+    const petCfg = CONFIG.PETS[petKey];
+    if (!petCfg) return;
+
+    const cost = petCfg.cost || 0;
+    if (state.coins < cost) {
+      showToast('⚠️', 'Koin tidak cukup! Selesaikan sesi fokus untuk mendapat koin.');
+      return;
+    }
+
+    // Deduct coins & unlock pet
+    state.coins -= cost;
+    if (!state.unlockedPets) state.unlockedPets = ['crocodile', 'owl'];
+    if (!state.unlockedPets.includes(petKey)) {
+      state.unlockedPets.push(petKey);
+    }
+
+    saveState();
+    showToast('🎉', `Berhasil membeli ${petCfg.name}!`);
+
+    // Set active & re-render
+    setActivePetUI(petKey);
+    renderHeader();
+    renderShop();
+  }
+
+  // ── PET SELECTION UI ───────────────────────────────────────
+  function setActivePetUI(selectedPetKey) {
+    if (!selectedPetKey || !CONFIG.PETS[selectedPetKey]) return;
+
+    const isUnlocked = state.unlockedPets?.includes(selectedPetKey);
+    if (isUnlocked) {
+      state.activePet = selectedPetKey;
+      saveState();
+    }
+
+    const cards = document.querySelectorAll('.pet-card');
+    cards.forEach(card => {
+      const petKey = card.dataset.pet;
+      if (!petKey) return;
+
+      const petCfg         = CONFIG.PETS[petKey];
+      const isOwned        = state.unlockedPets?.includes(petKey);
+      const isSelected     = isOwned && (petKey === state.activePet);
+      const petDisplayName = petCfg?.displayName || petCfg?.name || petKey;
+      const btn            = card.querySelector('.select-pet-btn') || card.querySelector('.buy-pet-btn');
+
+      if (!isOwned) {
+        // Pet is locked / not owned
+        card.classList.remove('selected');
+        if (btn) {
+          btn.className = 'buy-pet-btn select-pet-btn w-full';
+          btn.dataset.cost = petCfg?.cost || 300;
+          btn.innerHTML = `<i data-lucide="shopping-bag" class="w-4 h-4"></i> 💰 Beli (${petCfg?.cost || 300} Koin)`;
+        }
+      } else if (isSelected) {
+        // Pet is owned AND active
+        card.classList.add('selected');
+        if (btn) {
+          btn.className = 'select-pet-btn w-full active-pet';
+          btn.innerHTML = `<i data-lucide="check-circle" class="w-4 h-4"></i> Aktif!`;
+        }
+      } else {
+        // Pet is owned BUT inactive
+        card.classList.remove('selected');
+        if (btn) {
+          btn.className = 'select-pet-btn w-full';
+          btn.innerHTML = `<i data-lucide="check" class="w-4 h-4"></i> Pilih ${petDisplayName}`;
+        }
+      }
+    });
+
+    if (typeof lucide !== 'undefined') {
+      lucide.createIcons();
+    }
+
+    // Sync dashboard pet display & header
+    if (typeof UI !== 'undefined' && UI.renderPet && UI.renderHeader) {
+      UI.renderPet();
+      UI.renderHeader();
+    }
+  }
+
   // ── PET SHOP ──────────────────────────────────────────────
   function renderShop() {
-    const pets = ['crocodile', 'owl'];
-    pets.forEach(petKey => {
-      const petData  = state.pets[petKey];
-      const stage    = petData.stage;
-      const exp      = petData.exp;
-      const maxExp   = CONFIG.EXP_PER_STAGE[stage];
-      const pct      = Math.min(100, (exp / maxExp) * 100);
-      const isActive = state.activePet === petKey;
+    const cards = document.querySelectorAll('.pet-card');
+    cards.forEach(card => {
+      const petKey = card.dataset.pet;
+      if (!petKey) return;
 
-      // XP bar
-      const xpBar  = petKey === 'crocodile' ? els.crocXpBar() : els.owlXpBar();
-      const xpText = petKey === 'crocodile' ? els.crocXpText() : els.owlXpText();
+      const petData  = state.pets[petKey] || { stage: 0, level: 1, exp: 0, maxExp: 100 };
+      const stage    = petData.stage;
+      const level    = petData.level || (stage + 1);
+      const exp      = petData.exp;
+      const maxExp   = petData.maxExp || CONFIG.EXP_PER_STAGE[stage];
+      const pct      = Math.min(100, (exp / maxExp) * 100);
+
+      // XP bar & text
+      const xpBar  = card.querySelector('.pet-xp-fill') || document.getElementById(`${petKey}-xp-bar`) || document.getElementById(`croc-xp-bar`);
+      const xpText = card.querySelector('.pet-xp-text') || document.getElementById(`${petKey}-xp-text`) || document.getElementById(`croc-xp-text`);
       if (xpBar)  xpBar.style.width = `${pct}%`;
       if (xpText) xpText.textContent = `${exp}/${maxExp}`;
 
       // Level badge
-      const lvlBadge = petKey === 'crocodile' ? els.crocLevelBadge() : els.owlLevelBadge();
-      if (lvlBadge) lvlBadge.textContent = `Lv ${stage + 1}`;
+      const lvlBadge = card.querySelector('.pet-card-level-badge') || document.getElementById(`${petKey}-level-badge`);
+      if (lvlBadge) lvlBadge.textContent = `Lv ${level}`;
 
       // Evo stages
-      const evoEls = petKey === 'crocodile' ? els.crocEvo() : els.owlEvo();
+      const evoEls = card.querySelectorAll('.evo-stage');
       evoEls.forEach((el, i) => {
-        if (!el) return;
         el.classList.toggle('reached', i <= stage);
       });
-
-      // Card selected state
-      const card = petKey === 'crocodile' ? els.petCardCroc() : els.petCardOwl();
-      if (card) card.classList.toggle('selected', isActive);
-
-      // Select button state
-      const btn = petKey === 'crocodile' ? els.btnSelectCroc() : els.btnSelectOwl();
-      if (btn) {
-        btn.classList.toggle('active-pet', isActive);
-        btn.innerHTML = isActive
-          ? '<i data-lucide="check-circle" class="w-4 h-4"></i> Aktif!'
-          : `<i data-lucide="check" class="w-4 h-4"></i> Pilih ${petKey === 'crocodile' ? 'Buaya' : 'Hantu'}`;
-        lucide.createIcons({ icons: {}, nameAttr: 'data-lucide', attrs: {}, nodes: [btn] });
-      }
     });
+
+    // Update active pet highlight classes & button labels
+    setActivePetUI(state.activePet);
   }
 
   // ── STATS PAGE ────────────────────────────────────────────
@@ -571,6 +712,8 @@ const UI = (() => {
     setMood,
     renderSessionDots,
     renderShop,
+    setActivePetUI,
+    buyPet,
     renderStats,
     renderAll,
     renderTip,
@@ -796,12 +939,25 @@ const Game = (() => {
     const petData   = state.pets[petKey];
     const oldStage  = petData.stage;
 
+    // Calculate coins reward (25-min = +50 Coins, 50-min = +120 Coins)
+    const durationMin = Math.round(cfg.duration / 60);
+    let earnedCoins = cfg.coins || 50;
+    if (mode === 'focus') {
+      if (durationMin >= 50) {
+        earnedCoins = 120;
+      } else if (durationMin >= 25) {
+        earnedCoins = 50;
+      } else {
+        earnedCoins = Math.max(10, Math.round(durationMin * 2));
+      }
+    }
+
     // Add rewards
-    state.coins          += cfg.coins;
-    state.totalCoins     += cfg.coins;
+    state.coins          += earnedCoins;
+    state.totalCoins     += earnedCoins;
     state.totalSessions  += 1;
     state.todaySessions  += 1;
-    state.totalMinutes   += Math.round(cfg.duration / 60);
+    state.totalMinutes   += durationMin;
 
     // Update weekly data (day of week 0=Mon)
     const dayIdx = (new Date().getDay() + 6) % 7;
@@ -813,12 +969,17 @@ const Game = (() => {
     // Update streak
     updateStreak();
 
-    // Check evolution
+    // Check evolution (supports 3-stage and 4-stage pets!)
     let evolved = false;
-    const maxExp = CONFIG.EXP_PER_STAGE[petData.stage];
-    if (petData.stage < 2 && petData.exp >= maxExp) {
-      petData.exp  -= maxExp;
+    const petCfg   = CONFIG.PETS[petKey];
+    const maxStage = petCfg?.stages ? petCfg.stages.length - 1 : 2;
+    const maxExp   = petData.maxExp || CONFIG.EXP_PER_STAGE[petData.stage] || 100;
+
+    if (petData.stage < maxStage && petData.exp >= maxExp) {
+      petData.exp   -= maxExp;
       petData.stage += 1;
+      petData.level  = petData.stage + 1;
+      petData.maxExp = CONFIG.EXP_PER_STAGE[petData.stage] || 999999;
       evolved = true;
     }
 
@@ -1283,31 +1444,19 @@ const App = (() => {
       document.getElementById('tip-card').style.display = 'none';
     });
 
-    // Pet selector (shop)
-    document.querySelectorAll('.select-pet-btn').forEach(btn => {
-
-      btn.addEventListener('click', () => {
-        const pet = btn.dataset.pet;
-        if (pet && CONFIG.PETS[pet]) {
-          const wasActive = state.activePet === pet;
-          if (!wasActive) {
-            state.activePet = pet;
-            saveState();
-            UI.renderPet();
-            UI.renderShop();
-            UI.renderHeader();
-            showToast('🐾', `${CONFIG.PETS[pet].name} dipilih!`);
-          }
-        }
-      });
-    });
-
-    // Pet card click (shop) – also triggers selection
+    // Pet selector / Buy button click in shop
     document.querySelectorAll('.pet-card').forEach(card => {
       card.addEventListener('click', (e) => {
-        if (e.target.closest('.select-pet-btn')) return;
-        const pet = card.dataset.pet;
-        if (pet) card.querySelector('.select-pet-btn')?.click();
+        const petKey = card.dataset.pet;
+        if (!petKey || !CONFIG.PETS[petKey]) return;
+
+        const isOwned = state.unlockedPets?.includes(petKey);
+        if (!isOwned) {
+          UI.buyPet(petKey);
+        } else {
+          UI.setActivePetUI(petKey);
+          showToast('🐾', `${CONFIG.PETS[petKey].name} dipilih!`);
+        }
       });
     });
   }

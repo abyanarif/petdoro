@@ -132,90 +132,101 @@
 
       <!-- ── STEP 2: Pet Selection & Name ──────────────────── -->
       <div id="ob-panel-2" class="ob-panel hidden">
-        <div class="text-center mb-6">
+
+        <!-- Header -->
+        <div class="text-center mb-5">
           <h2 class="text-2xl font-black text-white mb-1">Pilih Temanmu 🐾</h2>
-          <p class="text-sm text-gray-400">Siapa yang akan menemani petualanganmu?</p>
+          <p class="text-xs text-gray-400">Siapa yang akan menemani petualanganmu?</p>
         </div>
 
-        <!-- Pet Selection Cards -->
-        <div class="grid grid-cols-2 gap-3 mb-5">
+        <!-- Pet Selection Cards — equal-height 2-column grid -->
+        <div class="grid grid-cols-2 gap-3 mb-4">
 
-          <!-- Crocodile -->
+          <!-- ─── Crocodile ─── -->
           <button class="ob-pet-card" id="ob-card-crocodile" data-pet="crocodile" type="button">
-            <div class="ob-pet-card-inner">
-              <div class="ob-pet-img-wrap">
-                <img src="animal_assets/crocodile_0.png" alt="Crocodile"
-                  class="w-20 h-20 object-contain drop-shadow-lg transition-transform duration-300" />
-                <div class="ob-pet-selected-ring" id="ob-ring-crocodile"></div>
-              </div>
-              <div class="mt-2">
-                <div class="text-sm font-black text-white">Buaya 🐊</div>
-                <div class="text-[10px] text-gray-400 mt-0.5">Tangguh & berani</div>
-                <div class="ob-pet-tag ob-tag-nature mt-1.5">🌿 Nature</div>
-              </div>
-              <div class="ob-check-icon hidden" id="ob-check-crocodile">
-                <i data-lucide="check" class="w-3 h-3"></i>
-              </div>
+            <!-- Selected check badge -->
+            <div class="ob-check-icon hidden" id="ob-check-crocodile">
+              <i data-lucide="check" class="w-3 h-3"></i>
+            </div>
+
+            <!-- Image container — fixed height so both cards stay same size -->
+            <div class="ob-pet-img-box">
+              <img src="animal_assets/crocodile_0.png" alt="Crocodile"
+                class="ob-pet-img" />
+            </div>
+
+            <!-- Info -->
+            <div class="ob-pet-info">
+              <div class="ob-pet-title">Buaya 🐊</div>
+              <div class="ob-pet-subtitle">Tangguh &amp; Berani</div>
+              <div class="ob-pet-tag ob-tag-nature">🌿 Nature</div>
             </div>
           </button>
 
-          <!-- Owl -->
+          <!-- ─── Owl ─── -->
           <button class="ob-pet-card" id="ob-card-owl" data-pet="owl" type="button">
-            <div class="ob-pet-card-inner">
-              <div class="ob-pet-img-wrap">
-                <img src="animal_assets/owl_0.png" alt="Owl"
-                  class="w-20 h-20 object-contain drop-shadow-lg transition-transform duration-300" />
-                <div class="ob-pet-selected-ring" id="ob-ring-owl"></div>
-              </div>
-              <div class="mt-2">
-                <div class="text-sm font-black text-white">Hantu 🦉</div>
-                <div class="text-[10px] text-gray-400 mt-0.5">Bijak & misterius</div>
-                <div class="ob-pet-tag ob-tag-magic mt-1.5">✨ Magic</div>
-              </div>
-              <div class="ob-check-icon hidden" id="ob-check-owl">
-                <i data-lucide="check" class="w-3 h-3"></i>
-              </div>
+            <!-- Selected check badge -->
+            <div class="ob-check-icon hidden" id="ob-check-owl">
+              <i data-lucide="check" class="w-3 h-3"></i>
+            </div>
+
+            <!-- Image container — same fixed height -->
+            <div class="ob-pet-img-box">
+              <img src="animal_assets/owl_0.png" alt="Owl"
+                class="ob-pet-img" />
+            </div>
+
+            <!-- Info -->
+            <div class="ob-pet-info">
+              <div class="ob-pet-title">Burung Hantu 🦉</div>
+              <div class="ob-pet-subtitle">Fokus &amp; Bijak</div>
+              <div class="ob-pet-tag ob-tag-magic">✨ Magic</div>
             </div>
           </button>
+
+        </div><!-- /grid -->
+
+        <!-- Separator -->
+        <div class="ob-divider">
+          <span>beri nama hewanmu</span>
         </div>
 
-        <!-- Pet Name Input -->
-        <div class="mb-5">
-          <label class="block text-xs font-bold text-gray-300 mb-2 uppercase tracking-wider">
-            Beri Nama Hewanmu ✏️
-          </label>
+        <!-- Name Input -->
+        <div class="mb-3">
           <div class="ob-input-wrap">
             <span class="ob-input-icon">🏷️</span>
             <input
               type="text"
               id="ob-pet-name-input"
               maxlength="20"
-              placeholder="Masukkan nama hewanmu..."
+              placeholder="Contoh: Koko, Luna, Rex..."
               class="ob-name-input"
               autocomplete="off"
               spellcheck="false"
             />
             <span id="ob-name-count" class="ob-char-count">0/20</span>
           </div>
-          <p id="ob-name-hint" class="text-[10px] text-gray-500 mt-1.5 ml-1 hidden">Nama minimal 2 karakter ya!</p>
+          <p id="ob-name-hint" class="text-[10px] text-red-400/80 mt-1.5 ml-1 hidden">
+            ⚠️ Nama minimal 2 karakter
+          </p>
         </div>
 
-        <!-- Preview -->
-        <div class="ob-preview-chip" id="ob-preview" style="opacity:0;transform:translateY(6px)">
+        <!-- Live Preview chip -->
+        <div class="ob-preview-chip mb-4" id="ob-preview" style="opacity:0;transform:translateY(6px)">
           <span id="ob-preview-emoji">🥚</span>
-          <span id="ob-preview-text" class="text-xs text-gray-300">Pilih hewan & beri nama...</span>
+          <span id="ob-preview-text" class="text-xs text-gray-300">Pilih hewan &amp; beri nama...</span>
         </div>
 
         <!-- Start Button -->
-        <button id="btn-ob-start" class="ob-cta-btn w-full mt-4" disabled>
-          <span id="ob-start-label">Mulai Petualangan! 🚀</span>
+        <button id="btn-ob-start" class="ob-cta-btn w-full" disabled>
+          Mulai Petualangan! 🚀
         </button>
 
         <!-- Back link -->
-        <button id="btn-ob-back" class="w-full mt-2 text-xs text-gray-500 hover:text-gray-300 transition-colors py-1">
+        <button id="btn-ob-back" class="ob-back-btn">
           ← Kembali
         </button>
-      </div>
+      </div><!-- /ob-panel-2 -->
 
     </div><!-- /onboarding-card -->
   </div><!-- /#onboarding-overlay -->
@@ -424,10 +435,10 @@
                 <div class="mb-2">
                   <div class="flex justify-between mb-0.5">
                     <span class="text-[10px] text-gray-500">EXP</span>
-                    <span class="text-[10px] text-gray-500" id="croc-xp-text">0/100</span>
+                    <span class="text-[10px] text-gray-500 pet-xp-text" id="croc-xp-text">0/100</span>
                   </div>
                   <div class="h-1.5 bg-surface rounded-full overflow-hidden">
-                    <div id="croc-xp-bar" class="h-full bg-gradient-to-r from-green-400 to-emerald-500 rounded-full transition-all duration-700" style="width:0%"></div>
+                    <div id="croc-xp-bar" class="pet-xp-fill h-full bg-gradient-to-r from-green-400 to-emerald-500 rounded-full transition-all duration-700" style="width:0%"></div>
                   </div>
                 </div>
                 <button class="select-pet-btn w-full" id="btn-select-crocodile" data-pet="crocodile">
@@ -449,7 +460,7 @@
                   <h3 class="text-base font-black text-white">Burung Hantu Bijak</h3>
                   <span class="text-xs bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded-full font-semibold">✨ Magic</span>
                 </div>
-                <p class="text-xs text-gray-400 mb-2">Hantu malam yang penuh kebijaksanaan. Sempurna untuk sesi belajar malam hari!</p>
+                <p class="text-xs text-gray-400 mb-2">Burung hantu malam yang penuh kebijaksanaan. Sempurna untuk sesi belajar malam hari!</p>
                 <div class="flex gap-1.5 mb-3">
                   <div class="evo-stage" id="owl-evo-0">🥚</div>
                   <div class="text-gray-600 text-sm">→</div>
@@ -460,14 +471,90 @@
                 <div class="mb-2">
                   <div class="flex justify-between mb-0.5">
                     <span class="text-[10px] text-gray-500">EXP</span>
-                    <span class="text-[10px] text-gray-500" id="owl-xp-text">0/100</span>
+                    <span class="text-[10px] text-gray-500 pet-xp-text" id="owl-xp-text">0/100</span>
                   </div>
                   <div class="h-1.5 bg-surface rounded-full overflow-hidden">
-                    <div id="owl-xp-bar" class="h-full bg-gradient-to-r from-purple-400 to-violet-500 rounded-full transition-all duration-700" style="width:0%"></div>
+                    <div id="owl-xp-bar" class="pet-xp-fill h-full bg-gradient-to-r from-purple-400 to-violet-500 rounded-full transition-all duration-700" style="width:0%"></div>
                   </div>
                 </div>
                 <button class="select-pet-btn w-full" id="btn-select-owl" data-pet="owl">
-                  <i data-lucide="check" class="w-4 h-4"></i> Pilih Hantu
+                  <i data-lucide="check" class="w-4 h-4"></i> Pilih Burung Hantu
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Cat Card -->
+          <div class="pet-card" id="pet-card-cat" data-pet="cat">
+            <div class="pet-card-inner">
+              <div class="relative">
+                <img src="animal_assets/cat_2.png" alt="Cat" class="w-24 h-24 object-contain drop-shadow-xl" />
+                <div class="pet-card-level-badge" id="cat-level-badge">Lv 1</div>
+              </div>
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <h3 class="text-base font-black text-white">Kucing Imut</h3>
+                  <span class="text-xs bg-pink-500/20 text-pink-300 px-1.5 py-0.5 rounded-full font-semibold">💖 Cute</span>
+                </div>
+                <p class="text-xs text-gray-400 mb-2">Kucing imut yang setia menemanimu saat bekerja dan belajar!</p>
+                <div class="flex gap-1 mb-3 overflow-x-auto">
+                  <div class="evo-stage" id="cat-evo-0">🥚</div>
+                  <div class="text-gray-600 text-xs self-center">→</div>
+                  <div class="evo-stage" id="cat-evo-1">🐱</div>
+                  <div class="text-gray-600 text-xs self-center">→</div>
+                  <div class="evo-stage" id="cat-evo-2">🐈</div>
+                  <div class="text-gray-600 text-xs self-center">→</div>
+                  <div class="evo-stage" id="cat-evo-3">👑</div>
+                </div>
+                <div class="mb-2">
+                  <div class="flex justify-between mb-0.5">
+                    <span class="text-[10px] text-gray-500">EXP</span>
+                    <span class="text-[10px] text-gray-500 pet-xp-text" id="cat-xp-text">0/100</span>
+                  </div>
+                  <div class="h-1.5 bg-surface rounded-full overflow-hidden">
+                    <div id="cat-xp-bar" class="pet-xp-fill h-full bg-gradient-to-r from-pink-400 to-rose-500 rounded-full transition-all duration-700" style="width:0%"></div>
+                  </div>
+                </div>
+                <button class="select-pet-btn w-full" id="btn-select-cat" data-pet="cat">
+                  <i data-lucide="check" class="w-4 h-4"></i> Pilih Kucing
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Dragon Card -->
+          <div class="pet-card" id="pet-card-dragon" data-pet="dragon">
+            <div class="pet-card-inner">
+              <div class="relative">
+                <img src="animal_assets/dragon_2.png" alt="Dragon" class="w-24 h-24 object-contain drop-shadow-xl" />
+                <div class="pet-card-level-badge" id="dragon-level-badge">Lv 1</div>
+              </div>
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <h3 class="text-base font-black text-white">Naga Api</h3>
+                  <span class="text-xs bg-red-500/20 text-red-300 px-1.5 py-0.5 rounded-full font-semibold">🔥 Mythic</span>
+                </div>
+                <p class="text-xs text-gray-400 mb-2">Naga legendaris yang membakar semangat produktivitasmu!</p>
+                <div class="flex gap-1 mb-3 overflow-x-auto">
+                  <div class="evo-stage" id="dragon-evo-0">🥚</div>
+                  <div class="text-gray-600 text-xs self-center">→</div>
+                  <div class="evo-stage" id="dragon-evo-1">🐉</div>
+                  <div class="text-gray-600 text-xs self-center">→</div>
+                  <div class="evo-stage" id="dragon-evo-2">🦖</div>
+                  <div class="text-gray-600 text-xs self-center">→</div>
+                  <div class="evo-stage" id="dragon-evo-3">🔥</div>
+                </div>
+                <div class="mb-2">
+                  <div class="flex justify-between mb-0.5">
+                    <span class="text-[10px] text-gray-500">EXP</span>
+                    <span class="text-[10px] text-gray-500 pet-xp-text" id="dragon-xp-text">0/100</span>
+                  </div>
+                  <div class="h-1.5 bg-surface rounded-full overflow-hidden">
+                    <div id="dragon-xp-bar" class="pet-xp-fill h-full bg-gradient-to-r from-red-500 to-orange-500 rounded-full transition-all duration-700" style="width:0%"></div>
+                  </div>
+                </div>
+                <button class="select-pet-btn w-full" id="btn-select-dragon" data-pet="dragon">
+                  <i data-lucide="check" class="w-4 h-4"></i> Pilih Naga
                 </button>
               </div>
             </div>
