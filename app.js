@@ -11,6 +11,9 @@
    ============================================================ */
 const CONFIG = {
     STORAGE_KEY: 'petdoro_v1',
+    SUPABASE_URL: 'https://YOUR_SUPABASE_PROJECT_ID.supabase.co',
+    SUPABASE_ANON_KEY: 'YOUR_SUPABASE_ANON_KEY',
+    TIMER_SESSION_KEY: 'petdoro_timer_session',
     SESSION_MODES: {
         focus: { label: '🎯 Focus', duration: 25 * 60, exp: 50, coins: 50, label_short: 'Focus' },
         short: { label: '☕ Short Break', duration: 5 * 60, exp: 10, coins: 5, label_short: 'Short Break' },
@@ -133,7 +136,7 @@ const REDEEM_CODES = {
    ============================================================ */
 const DEFAULT_STATE = () => ({
     user: { name: 'Trainer', photoUrl: '' },
-    activePet: 'crocodile',
+    activePet: null,                             // null for new users until chosen during onboarding
     unlockedPets: ['crocodile', 'owl'],
     petCustomNames: { crocodile: '', owl: '', cat: '', dragon: '' }, // custom names per pet
     onboardingDone: false,                       // first-run flag
@@ -168,68 +171,266 @@ const DEFAULT_STATE = () => ({
 
 let state = DEFAULT_STATE();
 
-function loadState() {
+let supabaseClient = null;
+
+function getSupabaseClient() {
+    if (supabaseClient) return supabaseClient;
+    if (window.supabase && CONFIG.SUPABASE_URL && !CONFIG.SUPABASE_URL.includes('YOUR_SUPABASE_PROJECT_ID')) {
+        try {
+            supabaseClient = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY);
+        } catch (e) {
+            console.warn('[Petdoro] Supabase initialization failed:', e);
+        }
+    }
+    return supabaseClient;
+}
+
+function getUserId() {
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    if (tgUser && tgUser.id) {
+        return `tg_${tgUser.id}`;
+    }
+    let localId = localStorage.getItem('petdoro_user_id');
+    if (!localId) {
+        localId = 'usr_' + Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
+        localStorage.setItem('petdoro_user_id', localId);
+    }
+    return localId;
+}
+
+function sanitizeLoadedState() {
+    if (state.onboardingDone && !state.activePet) {
+        state.activePet = 'crocodile';
+    }
+
+    if (!state.unlockedPets || !Array.isArray(state.unlockedPets)) {
+        state.unlockedPets = ['crocodile', 'owl'];
+    }
+    if (!state.unlockedPets.includes('crocodile')) state.unlockedPets.push('crocodile');
+    if (!state.unlockedPets.includes('owl')) state.unlockedPets.push('owl');
+
+    if (!state.redeemedCodes || !Array.isArray(state.redeemedCodes)) {
+        state.redeemedCodes = [];
+    }
+
+    if (!state.currentSubjectTag) state.currentSubjectTag = 'Coding';
+    if (state.currentTaskNote === undefined) state.currentTaskNote = '';
+    if (!state.subjectStats || typeof state.subjectStats !== 'object') {
+        state.subjectStats = { Coding: 0, Math: 0, Thesis: 0, General: 0 };
+    }
+
+    const todayStr = new Date().toDateString();
+    if (!state.dailyQuests || state.dailyQuests.date !== todayStr) {
+        state.dailyQuests = {
+            date: todayStr,
+            todayMinutes: 0,
+            claimed: { quest_session: false, quest_time: false, quest_streak: false }
+        };
+    }
+
+    if (!state.pets) state.pets = {};
+    Object.keys(CONFIG.PETS).forEach(petKey => {
+        if (!state.pets[petKey]) {
+            state.pets[petKey] = {
+                name: CONFIG.PETS[petKey].name,
+                stage: 0,
+                level: 1,
+                exp: 0,
+                maxExp: CONFIG.EXP_PER_STAGE[0]
+            };
+        } else {
+            const pet = state.pets[petKey];
+            if (pet.stage === undefined) pet.stage = 0;
+            if (pet.level === undefined) pet.level = pet.stage + 1;
+            if (pet.exp === undefined) pet.exp = 0;
+            if (!pet.maxExp) pet.maxExp = CONFIG.EXP_PER_STAGE[pet.stage] || 100;
+            if (!pet.name) pet.name = CONFIG.PETS[petKey].name;
+        }
+    });
+}
+
+function getTelegramUser() {
+    const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
+    if (tgUser && tgUser.id) {
+        return tgUser;
+    }
+    return null;
+}
+
+async function loadState() {
+    let localData = null;
     try {
         const saved = localStorage.getItem(CONFIG.STORAGE_KEY);
         if (saved) {
-            const parsed = JSON.parse(saved);
-            state = deepMerge(DEFAULT_STATE(), parsed);
+            localData = JSON.parse(saved);
         }
-        // Migration & sanitization for unlocked pets & redeemed codes & quests
-        if (!state.unlockedPets || !Array.isArray(state.unlockedPets)) {
-            state.unlockedPets = ['crocodile', 'owl'];
-        }
-        if (!state.unlockedPets.includes('crocodile')) state.unlockedPets.push('crocodile');
-        if (!state.unlockedPets.includes('owl')) state.unlockedPets.push('owl');
-
-        if (!state.redeemedCodes || !Array.isArray(state.redeemedCodes)) {
-            state.redeemedCodes = [];
-        }
-
-        if (!state.currentSubjectTag) state.currentSubjectTag = 'Coding';
-        if (state.currentTaskNote === undefined) state.currentTaskNote = '';
-        if (!state.subjectStats || typeof state.subjectStats !== 'object') {
-            state.subjectStats = { Coding: 0, Math: 0, Thesis: 0, General: 0 };
-        }
-
-        const todayStr = new Date().toDateString();
-        if (!state.dailyQuests || state.dailyQuests.date !== todayStr) {
-            state.dailyQuests = {
-                date: todayStr,
-                todayMinutes: 0,
-                claimed: { quest_session: false, quest_time: false, quest_streak: false }
-            };
-        }
-
-        if (!state.pets) state.pets = {};
-        Object.keys(CONFIG.PETS).forEach(petKey => {
-            if (!state.pets[petKey]) {
-                state.pets[petKey] = {
-                    name: CONFIG.PETS[petKey].name,
-                    stage: 0,
-                    level: 1,
-                    exp: 0,
-                    maxExp: CONFIG.EXP_PER_STAGE[0]
-                };
-            } else {
-                const pet = state.pets[petKey];
-                if (pet.stage === undefined) pet.stage = 0;
-                if (pet.level === undefined) pet.level = pet.stage + 1;
-                if (pet.exp === undefined) pet.exp = 0;
-                if (!pet.maxExp) pet.maxExp = CONFIG.EXP_PER_STAGE[pet.stage] || 100;
-                if (!pet.name) pet.name = CONFIG.PETS[petKey].name;
-            }
-        });
     } catch (e) {
-        console.warn('[Petdoro] Failed to load state:', e);
+        console.warn('[Petdoro] Failed reading local storage state:', e);
     }
+
+    const client = getSupabaseClient();
+    const tgUser = getTelegramUser();
+    const telegramId = tgUser?.id;
+
+    if (client && telegramId) {
+        try {
+            // Fetch profile from `users` table and pets from `user_pets` table
+            const { data: userRow, error: userErr } = await client
+                .from('users')
+                .select('*')
+                .eq('telegram_id', telegramId)
+                .maybeSingle();
+
+            const { data: petRows, error: petErr } = await client
+                .from('user_pets')
+                .select('*')
+                .eq('telegram_id', telegramId);
+
+            if (!userErr && userRow) {
+                console.log('[Petdoro] Loaded user profile & pets from Supabase tables');
+                state = deepMerge(DEFAULT_STATE(), localData || {});
+                state.coins = userRow.coins !== undefined ? userRow.coins : (state.coins || 50);
+                state.streak = userRow.streak !== undefined ? userRow.streak : (state.streak || 0);
+                if (userRow.username) state.user.name = userRow.username;
+
+                if (petRows && Array.isArray(petRows) && petRows.length > 0) {
+                    petRows.forEach(p => {
+                        const key = p.pet_key;
+                        if (key && CONFIG.PETS[key]) {
+                            if (!state.pets[key]) state.pets[key] = {};
+                            state.pets[key].level = p.level || 1;
+                            state.pets[key].exp = p.exp || 0;
+                            state.pets[key].stage = Math.max(0, (p.level || 1) - 1);
+
+                            if (p.is_unlocked) {
+                                if (!state.unlockedPets) state.unlockedPets = [];
+                                if (!state.unlockedPets.includes(key)) state.unlockedPets.push(key);
+                            }
+                            if (p.is_active) {
+                                state.activePet = key;
+                            }
+                        }
+                    });
+                }
+
+                try {
+                    localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(state));
+                } catch (e) {}
+            } else if (localData) {
+                // Auto-migrate existing localData to Supabase tables (users & user_pets)!
+                console.log('[Petdoro] Auto-migrating local progress to Supabase users & user_pets tables...');
+                state = deepMerge(DEFAULT_STATE(), localData);
+                sanitizeLoadedState();
+
+                const username = tgUser ? (tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : '')) : (state.user?.name || 'Trainer');
+                await client.from('users').upsert({
+                    telegram_id: telegramId,
+                    username: username,
+                    coins: state.coins !== undefined ? state.coins : 50,
+                    streak: state.streak || 0,
+                    updated_at: new Date().toISOString()
+                });
+
+                const petsToInsert = Object.keys(CONFIG.PETS).map(petKey => {
+                    const petObj = state.pets[petKey] || {};
+                    return {
+                        telegram_id: telegramId,
+                        pet_key: petKey,
+                        level: petObj.level || 1,
+                        exp: petObj.exp || 0,
+                        is_unlocked: (state.unlockedPets || ['crocodile', 'owl']).includes(petKey),
+                        is_active: state.activePet === petKey
+                    };
+                });
+                await client.from('user_pets').upsert(petsToInsert, { onConflict: 'telegram_id,pet_key' });
+                console.log('[Petdoro] Auto-migration to Supabase tables complete!');
+            } else {
+                // Brand new user -> Create initial default row in users (50 coins, crocodile unlocked level 1)
+                console.log('[Petdoro] Initializing new user row in Supabase...');
+                state = DEFAULT_STATE();
+                if (tgUser) {
+                    state.user.name = tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : '');
+                }
+                state.coins = 50;
+                sanitizeLoadedState();
+
+                const username = state.user.name || 'Trainer';
+                await client.from('users').upsert({
+                    telegram_id: telegramId,
+                    username: username,
+                    coins: 50,
+                    streak: 0,
+                    updated_at: new Date().toISOString()
+                });
+
+                const defaultPets = [
+                    { telegram_id: telegramId, pet_key: 'crocodile', level: 1, exp: 0, is_unlocked: true, is_active: true },
+                    { telegram_id: telegramId, pet_key: 'owl', level: 1, exp: 0, is_unlocked: true, is_active: false },
+                    { telegram_id: telegramId, pet_key: 'cat', level: 1, exp: 0, is_unlocked: false, is_active: false },
+                    { telegram_id: telegramId, pet_key: 'dragon', level: 1, exp: 0, is_unlocked: false, is_active: false },
+                ];
+                await client.from('user_pets').upsert(defaultPets, { onConflict: 'telegram_id,pet_key' });
+            }
+        } catch (e) {
+            console.warn('[Petdoro] Supabase load error, falling back to local state:', e);
+            state = localData ? deepMerge(DEFAULT_STATE(), localData) : DEFAULT_STATE();
+        }
+    } else {
+        state = localData ? deepMerge(DEFAULT_STATE(), localData) : DEFAULT_STATE();
+    }
+
+    sanitizeLoadedState();
 }
 
 function saveState() {
+    // 1. Save to local storage immediately for zero UI latency
     try {
         localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(state));
     } catch (e) {
-        console.warn('[Petdoro] Failed to save state:', e);
+        console.warn('[Petdoro] Failed saving to local storage:', e);
+    }
+
+    // 2. Async push to Supabase `users` and `user_pets` tables
+    const client = getSupabaseClient();
+    const tgUser = getTelegramUser();
+    const telegramId = tgUser?.id;
+
+    if (client && telegramId) {
+        const username = state.user?.name || tgUser?.first_name || 'Trainer';
+
+        const userPromise = client.from('users').upsert({
+            telegram_id: telegramId,
+            username: username,
+            coins: state.coins || 0,
+            streak: state.streak || 0,
+            updated_at: new Date().toISOString()
+        });
+
+        const petsToUpsert = Object.keys(CONFIG.PETS).map(petKey => {
+            const petObj = state.pets[petKey] || {};
+            return {
+                telegram_id: telegramId,
+                pet_key: petKey,
+                level: petObj.level || (petObj.stage + 1) || 1,
+                exp: petObj.exp || 0,
+                is_unlocked: (state.unlockedPets || []).includes(petKey),
+                is_active: state.activePet === petKey
+            };
+        });
+
+        const petsPromise = client.from('user_pets').upsert(petsToUpsert, { onConflict: 'telegram_id,pet_key' });
+
+        Promise.all([userPromise, petsPromise])
+            .then(([uRes, pRes]) => {
+                if (!uRes.error && !pRes.error) {
+                    UI.showSyncSuccess();
+                } else {
+                    console.warn('[Petdoro] Supabase table sync warning:', uRes.error || pRes.error);
+                }
+            })
+            .catch(err => {
+                console.warn('[Petdoro] Supabase table sync exception:', err);
+            });
     }
 }
 
@@ -293,12 +494,38 @@ const Timer = (() => {
     let onTick = null;
     let onComplete = null;
 
+    function saveSessionState() {
+        if (!isRunning) {
+            clearSessionState();
+            return;
+        }
+        const sessionData = {
+            mode,
+            isRunning: true,
+            remainingSeconds: remaining,
+            totalSeconds: totalTime,
+            targetEndTime: Date.now() + (remaining * 1000),
+            subjectTag: state.currentSubjectTag || 'Coding',
+            taskNote: state.currentTaskNote || ''
+        };
+        try {
+            localStorage.setItem(CONFIG.TIMER_SESSION_KEY, JSON.stringify(sessionData));
+        } catch (e) {}
+    }
+
+    function clearSessionState() {
+        try {
+            localStorage.removeItem(CONFIG.TIMER_SESSION_KEY);
+        } catch (e) {}
+    }
+
     function setMode(newMode) {
         if (isRunning) stop();
         mode = newMode;
         const cfg = CONFIG.SESSION_MODES[newMode] || CONFIG.SESSION_MODES.focus;
         remaining = cfg.duration;
         totalTime = cfg.duration;
+        clearSessionState();
         if (onTick) onTick(remaining, totalTime, false);
     }
 
@@ -307,6 +534,7 @@ const Timer = (() => {
         mode = newMode;
         remaining = durationSeconds;
         totalTime = durationSeconds;
+        clearSessionState();
         if (onTick) onTick(remaining, totalTime, false);
     }
 
@@ -315,8 +543,10 @@ const Timer = (() => {
         isRunning = true;
         onTick = tickCb;
         onComplete = completeCb;
+        saveSessionState();
         interval = setInterval(() => {
             remaining--;
+            saveSessionState();
             if (onTick) onTick(remaining, totalTime, true);
             if (remaining <= 0) {
                 stop();
@@ -330,6 +560,7 @@ const Timer = (() => {
         isRunning = false;
         clearInterval(interval);
         interval = null;
+        clearSessionState();
         if (onTick) onTick(remaining, totalTime, false);
     }
 
@@ -337,11 +568,13 @@ const Timer = (() => {
         isRunning = false;
         clearInterval(interval);
         interval = null;
+        clearSessionState();
     }
 
     function reset() {
         stop();
         remaining = totalTime;
+        clearSessionState();
         if (onTick) onTick(remaining, totalTime, false);
     }
 
@@ -983,6 +1216,18 @@ const UI = (() => {
         tipCard.style.display = 'flex';
     }
 
+    // ── SYNC INDICATOR TOAST ──────────────────────────────────
+    let syncToastTimer = null;
+    function showSyncSuccess() {
+        const indicator = document.getElementById('sync-status-indicator');
+        if (!indicator) return;
+        indicator.style.opacity = '1';
+        clearTimeout(syncToastTimer);
+        syncToastTimer = setTimeout(() => {
+            indicator.style.opacity = '0';
+        }, 2200);
+    }
+
     // ── FULL RENDER ───────────────────────────────────────────
     function renderAll() {
         renderHeader();
@@ -1002,6 +1247,7 @@ const UI = (() => {
         setTimerRunningState,
         triggerPetCelebration,
         clearPetCelebration,
+        showSyncSuccess,
         setMood,
         renderSessionDots,
         renderShop,
@@ -1122,14 +1368,21 @@ const Onboarding = (() => {
     // ── Close onboarding, launch app ─────────────────────────
     function completeOnboarding() {
         const overlay = getEl('onboarding-overlay');
-        if (!overlay) return;
+        const mainApp = getEl('app');
+        if (!overlay || !selectedPet) return;
 
         // Save to state
         state.activePet = selectedPet;
+        if (!state.unlockedPets) state.unlockedPets = ['crocodile', 'owl'];
+        if (!state.unlockedPets.includes(selectedPet)) state.unlockedPets.push(selectedPet);
+
         if (!state.petCustomNames) state.petCustomNames = { crocodile: '', owl: '' };
         state.petCustomNames[selectedPet] = petNameValue.trim();
         state.onboardingDone = true;
         saveState();
+
+        // Unhide main app container
+        if (mainApp) mainApp.classList.remove('hidden');
 
         // Animate out overlay
         overlay.style.transition = 'opacity 0.5s ease, transform 0.5s cubic-bezier(0.34,1.56,0.64,1)';
@@ -1141,7 +1394,9 @@ const Onboarding = (() => {
             overlay.style.transition = '';
 
             // Now finish normal app init
-            window._postOnboardingInit();
+            if (typeof window._postOnboardingInit === 'function') {
+                window._postOnboardingInit();
+            }
         }, 450);
     }
 
@@ -1988,44 +2243,117 @@ const App = (() => {
         state.todaySessions = state.lastActiveDate === today ? state.todaySessions : 0;
     }
 
+    // ── TIMER RECOVERY ON REFRESH/REOPEN ──────────────────────
+    function checkAndRecoverTimerSession() {
+        try {
+            const rawSession = localStorage.getItem(CONFIG.TIMER_SESSION_KEY);
+            if (!rawSession) return;
+
+            const session = JSON.parse(rawSession);
+            if (!session || !session.isRunning || !session.targetEndTime) {
+                localStorage.removeItem(CONFIG.TIMER_SESSION_KEY);
+                return;
+            }
+
+            const now = Date.now();
+            const targetEnd = session.targetEndTime;
+
+            if (now < targetEnd) {
+                const remainingSec = Math.round((targetEnd - now) / 1000);
+                console.log(`[Petdoro] Recovering active focus session: ${remainingSec}s left`);
+
+                if (session.subjectTag) state.currentSubjectTag = session.subjectTag;
+                if (session.taskNote) state.currentTaskNote = session.taskNote;
+
+                Timer.setDuration(remainingSec, session.mode || 'focus');
+                Timer.start(handleTick, handleComplete);
+
+                UI.setPlayPauseState(true);
+                UI.setTimerRunningState(true);
+                UI.updateActiveTaskDisplay();
+                showToast('⏱️', 'Sesi fokus kamu dilanjutkan!');
+            } else {
+                console.log('[Petdoro] Session completed while app was closed');
+                localStorage.removeItem(CONFIG.TIMER_SESSION_KEY);
+
+                if (session.subjectTag) state.currentSubjectTag = session.subjectTag;
+                if (session.taskNote) state.currentTaskNote = session.taskNote;
+
+                const mode = session.mode || 'focus';
+                Game.onSessionComplete(mode);
+                showToast('🎉', 'Sesi fokus selesai saat aplikasi ditutup!');
+            }
+        } catch (e) {
+            console.warn('[Petdoro] Timer session recovery error:', e);
+            localStorage.removeItem(CONFIG.TIMER_SESSION_KEY);
+        }
+    }
+
     // ── INIT ──────────────────────────────────────────────────
-    function init() {
-        loadState();
+    async function init() {
+        await loadState();
         initTelegram();
 
-        // Initial timer render
+        const onboardingOverlay = document.getElementById('onboarding-overlay');
+        const mainApp = document.getElementById('app');
+
+        // STRICT ONBOARDING ROUTE GUARD:
+        // If onboarding is not completed OR activePet is not selected, force Onboarding Screen ONLY!
+        if (!state.onboardingDone || !state.activePet) {
+            console.log('[Petdoro] Fresh Session -> Showing Onboarding Screen ONLY');
+            if (mainApp) mainApp.classList.add('hidden');
+            if (onboardingOverlay) onboardingOverlay.classList.remove('hidden');
+
+            Onboarding.show();
+
+            // Register post-onboarding completion callback
+            window._postOnboardingInit = () => {
+                if (mainApp) mainApp.classList.remove('hidden');
+                UI.renderAll();
+                updateRewardEstimate();
+                Nav.init();
+                initControls();
+                restoreSettings();
+                checkStreakOnLoad();
+                startTipRotation();
+                UI.setMood('idle');
+                const userName = document.getElementById('user-name')?.textContent || 'Trainer';
+                setTimeout(() => {
+                    showToast('👋', `Halo, ${userName}! Siap fokus hari ini?`);
+                }, 800);
+            };
+            return;
+        }
+
+        // RETURNING USER: Show Main App
+        if (onboardingOverlay) onboardingOverlay.classList.add('hidden');
+        if (mainApp) mainApp.classList.remove('hidden');
+
+        window._postOnboardingInit = () => {
+            UI.renderAll();
+        };
+
         const ts = Timer.getState();
         UI.renderTimer(ts.remaining, ts.totalTime, false);
 
-        // Full UI render
         UI.renderAll();
         updateRewardEstimate();
 
-        // Nav
         Nav.init();
-
-        // Controls
         initControls();
-
-        // Settings
         restoreSettings();
-
-        // Streak check
         checkStreakOnLoad();
-
-        // Tip rotation
         startTipRotation();
-
-        // Set initial mood
         UI.setMood('idle');
 
-        // Welcome toast
-        const userName = document.getElementById('user-name').textContent;
+        checkAndRecoverTimerSession();
+
+        const userName = document.getElementById('user-name')?.textContent || 'Trainer';
         setTimeout(() => {
             showToast('👋', `Halo, ${userName}! Siap fokus hari ini?`);
         }, 1000);
 
-        console.log('[Petdoro] App initialized! 🐾');
+        console.log('[Petdoro] App initialized for returning user! 🐾');
     }
 
     return { init };

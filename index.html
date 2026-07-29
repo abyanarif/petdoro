@@ -59,6 +59,9 @@
   <!-- Lottie Player -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
 
+  <!-- Supabase JS Client -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <!-- Custom Styles -->
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -76,7 +79,7 @@
   <!-- ═══════════════════════════════════════════════════════
        ONBOARDING OVERLAY (shown only on first launch)
   ═══════════════════════════════════════════════════════ -->
-  <div id="onboarding-overlay" class="fixed inset-0 z-60 flex flex-col items-center justify-center onboarding-bg hidden">
+  <div id="onboarding-overlay" class="fixed inset-0 z-60 flex flex-col items-center justify-center onboarding-bg">
     <!-- Decorative orbs inside onboarding -->
     <div class="fixed inset-0 overflow-hidden pointer-events-none">
       <div class="bg-orb bg-orb-1" style="opacity:0.25"></div>
@@ -234,7 +237,7 @@
   <!-- ═══════════════════════════════════════════════════════
        MAIN APP CONTAINER
   ═══════════════════════════════════════════════════════ -->
-  <div id="app" class="relative z-10 flex flex-col h-screen max-w-md mx-auto overflow-hidden">
+  <div id="app" class="relative z-10 flex flex-col h-screen max-w-md mx-auto overflow-hidden hidden">
 
     <!-- ── HEADER ────────────────────────────────────────── -->
     <header id="main-header" class="flex-shrink-0 px-4 pt-3 pb-2">
@@ -250,7 +253,12 @@
             </div>
           </div>
           <div>
-            <p id="user-name" class="text-sm font-bold text-white leading-tight">Trainer</p>
+            <div class="flex items-center gap-1.5">
+              <p id="user-name" class="text-sm font-bold text-white leading-tight">Trainer</p>
+              <span id="sync-status-indicator" class="text-[10px] text-emerald-400 font-extrabold bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 rounded-full transition-all duration-300 opacity-0 flex items-center gap-0.5 pointer-events-none">
+                ☁️ Synced
+              </span>
+            </div>
             <p id="streak-text" class="text-[11px] text-pastel-yellow font-semibold">🔥 0 day streak</p>
           </div>
         </div>
