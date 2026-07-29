@@ -536,7 +536,7 @@ const UI = (() => {
     }
 
     // ── TIMER ─────────────────────────────────────────────────
-    function renderTimer(remaining, _total, isRunning) {
+    function renderTimer(remaining, total, isRunning) {
         const m = Math.floor(remaining / 60);
         const s = remaining % 60;
         const mEl = els.timerMinutes();
@@ -546,13 +546,26 @@ const UI = (() => {
         mEl.textContent = String(m).padStart(2, '0');
         sEl.textContent = String(s).padStart(2, '0');
 
+        // Update SVG Progress Ring
+        const ringEl = document.getElementById('timer-progress-ring');
+        if (ringEl) {
+            const radius = 44;
+            const circumference = 2 * Math.PI * radius; // ~276.46
+            const ratio = (total > 0) ? Math.max(0, Math.min(1, remaining / total)) : 1;
+            const offset = circumference * (1 - ratio);
+            ringEl.style.strokeDasharray = `${circumference.toFixed(2)}`;
+            ringEl.style.strokeDashoffset = `${offset.toFixed(2)}`;
+        }
+
         if (isRunning) {
             dEl.classList.add('running');
             dEl.classList.remove('paused');
         } else {
             dEl.classList.remove('running');
-            if (remaining < CONFIG.SESSION_MODES[Timer.getState().mode].duration) {
+            if (remaining < (total || 1500)) {
                 dEl.classList.add('paused');
+            } else {
+                dEl.classList.remove('paused');
             }
         }
     }
@@ -570,27 +583,50 @@ const UI = (() => {
         }
     }
 
-    // ── SANDCLOCK & AURA ─────────────────────────────────────
-    function setSandclockVisible(visible) {
-        const sc = els.lottiesSandclock();
+    // ── TIMER RUNNING STATE & CELEBRATION ─────────────────────
+    function setTimerRunningState(isRunning) {
         const ar = els.auraRing();
         const petContainer = document.getElementById('pet-container');
-        if (visible) {
-            sc.style.opacity = '1';
-            ar.classList.add('running');
-            if (petContainer) {
-                petContainer.style.opacity = '0';
-                petContainer.style.transform = 'scale(0.7)';
-                petContainer.style.pointerEvents = 'none';
-            }
-        } else {
-            sc.style.opacity = '0';
-            ar.classList.remove('running');
+        if (isRunning) {
+            if (ar) ar.classList.add('running');
             if (petContainer) {
                 petContainer.style.opacity = '1';
-                petContainer.style.transform = 'scale(1)';
                 petContainer.style.pointerEvents = 'auto';
+                petContainer.classList.remove('pet-happy-jump');
+                petContainer.classList.add('timer-running-pet');
             }
+        } else {
+            if (ar) ar.classList.remove('running');
+            if (petContainer) {
+                petContainer.style.opacity = '1';
+                petContainer.style.pointerEvents = 'auto';
+                petContainer.classList.remove('timer-running-pet');
+            }
+        }
+    }
+
+    function triggerPetCelebration() {
+        const petContainer = document.getElementById('pet-container');
+        const celebLottie = document.getElementById('lottie-celebration');
+        if (petContainer) {
+            petContainer.classList.remove('timer-running-pet');
+            petContainer.classList.add('pet-happy-jump');
+        }
+        if (celebLottie) {
+            celebLottie.style.opacity = '1';
+            LottieManager.load('lottie-celebration', 'animation_assets/success.json', { loop: true, autoplay: true });
+        }
+    }
+
+    function clearPetCelebration() {
+        const petContainer = document.getElementById('pet-container');
+        const celebLottie = document.getElementById('lottie-celebration');
+        if (petContainer) {
+            petContainer.classList.remove('pet-happy-jump');
+        }
+        if (celebLottie) {
+            celebLottie.style.opacity = '0';
+            LottieManager.destroy('lottie-celebration');
         }
     }
 
@@ -963,7 +999,9 @@ const UI = (() => {
         renderPet,
         renderTimer,
         setPlayPauseState,
-        setSandclockVisible,
+        setTimerRunningState,
+        triggerPetCelebration,
+        clearPetCelebration,
         setMood,
         renderSessionDots,
         renderShop,
@@ -1570,8 +1608,9 @@ const App = (() => {
 
     // ── SESSION COMPLETE HANDLER ──────────────────────────────
     function handleComplete(mode) {
-        UI.setSandclockVisible(false);
+        UI.setTimerRunningState(false);
         UI.setPlayPauseState(false);
+        UI.triggerPetCelebration();
         UI.setMood(mode === 'focus' ? 'excited' : 'break');
 
         // Vibration
@@ -1643,20 +1682,16 @@ const App = (() => {
         document.getElementById('btn-play').addEventListener('click', () => {
             Timer.start(handleTick, handleComplete);
             UI.setPlayPauseState(true);
-            UI.setSandclockVisible(true);
+            UI.setTimerRunningState(true);
+            UI.clearPetCelebration();
             UI.setMood('running');
-            if (!LottieManager.has('lottie-sandclock')) {
-                LottieManager.load('lottie-sandclock', 'animation_assets/sandclock.json', { loop: true, autoplay: true });
-            } else {
-                LottieManager.play('lottie-sandclock');
-            }
         });
 
         // Pause button
         document.getElementById('btn-pause').addEventListener('click', () => {
             Timer.pause();
             UI.setPlayPauseState(false);
-            UI.setSandclockVisible(false);
+            UI.setTimerRunningState(false);
             UI.setMood('idle');
         });
 
@@ -1664,9 +1699,9 @@ const App = (() => {
         document.getElementById('btn-reset').addEventListener('click', () => {
             Timer.reset();
             UI.setPlayPauseState(false);
-            UI.setSandclockVisible(false);
+            UI.setTimerRunningState(false);
+            UI.clearPetCelebration();
             UI.setMood('idle');
-            LottieManager.destroy('lottie-sandclock');
             const timerState = Timer.getState();
             UI.renderTimer(timerState.remaining, timerState.totalTime, false);
             updateRewardEstimate();
@@ -1703,8 +1738,8 @@ const App = (() => {
                     UI.setMood((mode === 'short' || mode === 'long') ? 'break' : 'happy');
                 }
 
-                UI.setSandclockVisible(false);
-                LottieManager.destroy('lottie-sandclock');
+                UI.setTimerRunningState(false);
+                UI.clearPetCelebration();
 
                 const ts = Timer.getState();
                 UI.renderTimer(ts.remaining, ts.totalTime, false);
@@ -1918,12 +1953,6 @@ const App = (() => {
         });
     }
 
-    // ── INIT SANDCLOCK ────────────────────────────────────────
-    function preloadSandclock() {
-        LottieManager.load('lottie-sandclock', 'animation_assets/sandclock.json', { loop: true, autoplay: false });
-        document.getElementById('lottie-sandclock').style.opacity = '0';
-    }
-
     // ── RESTORE SETTINGS ──────────────────────────────────────
     function restoreSettings() {
         document.getElementById('toggle-sound').checked = state.settings.sound;
@@ -1980,9 +2009,6 @@ const App = (() => {
 
         // Settings
         restoreSettings();
-
-        // Preload sandclock
-        preloadSandclock();
 
         // Streak check
         checkStreakOnLoad();

@@ -383,19 +383,37 @@
               </div>
             </div>
 
-            <!-- Pet Display Area -->
-            <div class="relative w-44 h-44 flex items-center justify-center mb-3">
-              <!-- Sandclock Lottie (behind pet, visible when running) -->
-              <div id="lottie-sandclock" class="absolute inset-0 opacity-0 transition-opacity duration-500 pointer-events-none scale-110"></div>
+            <!-- Pet Display Area with SVG Progress Ring -->
+            <div class="relative w-48 h-48 flex items-center justify-center mb-3">
+              <!-- SVG Progress Ring -->
+              <svg class="absolute inset-0 w-full h-full -rotate-90 pointer-events-none" viewBox="0 0 100 100">
+                <!-- Background Circle Track -->
+                <circle cx="50" cy="50" r="44" stroke="rgba(255, 255, 255, 0.08)" stroke-width="4" fill="transparent" />
+                <!-- Progress Ring -->
+                <circle id="timer-progress-ring" cx="50" cy="50" r="44"
+                  stroke="url(#progress-gradient)" stroke-width="4.5" fill="transparent"
+                  stroke-dasharray="276.46" stroke-dashoffset="0" stroke-linecap="round"
+                  class="transition-all duration-500 ease-linear" />
+                <defs>
+                  <linearGradient id="progress-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stop-color="#7C3AED" />
+                    <stop offset="50%" stop-color="#EC4899" />
+                    <stop offset="100%" stop-color="#06B6D4" />
+                  </linearGradient>
+                </defs>
+              </svg>
 
-              <!-- Pet Image -->
-              <div id="pet-container" class="relative z-10 w-36 h-36">
+              <!-- Pet Image Container (Always Visible) -->
+              <div id="pet-container" class="relative z-10 w-36 h-36 flex items-center justify-center transition-all duration-300">
                 <img id="pet-image" src="animal_assets/crocodile_0.png" alt="Pet"
                   class="w-full h-full object-contain drop-shadow-2xl transition-all duration-500 animate-float" />
               </div>
 
+              <!-- Celebration Lottie Overlay (ON TOP of pet) -->
+              <div id="lottie-celebration" class="absolute inset-0 z-20 pointer-events-none opacity-0 transition-opacity duration-300 scale-125"></div>
+
               <!-- Aura Ring (visible when timer running) -->
-              <div id="aura-ring" class="absolute inset-0 rounded-full border-2 border-primary/40 scale-90 opacity-0 transition-all duration-500 pointer-events-none animate-pulse-glow"></div>
+              <div id="aura-ring" class="absolute inset-0 rounded-full border-2 border-primary/40 scale-95 opacity-0 transition-all duration-500 pointer-events-none animate-pulse-glow"></div>
             </div>
 
             <!-- Mood Indicator -->
