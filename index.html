@@ -291,16 +291,38 @@
       <section id="page-home" class="page-section animate-fade-in">
 
         <!-- Session Mode Selector -->
-        <div class="flex gap-2 mb-4">
-          <button class="session-btn active" data-mode="focus" data-duration="1500">
-            🎯 Focus
+        <div class="flex gap-1.5 mb-3 overflow-x-auto pb-1" id="session-mode-selector">
+          <button class="session-btn active" data-mode="focus" data-minutes="25">
+            🎯 25m
           </button>
-          <button class="session-btn" data-mode="short" data-duration="300">
-            ☕ Short Break
+          <button class="session-btn" data-mode="focus" data-minutes="50">
+            🔥 50m
           </button>
-          <button class="session-btn" data-mode="long" data-duration="900">
-            🌙 Long Break
+          <button class="session-btn" data-mode="short" data-minutes="5">
+            ☕ 5m
           </button>
+          <button class="session-btn" data-mode="long" data-minutes="15">
+            🌙 15m
+          </button>
+          <button class="session-btn" data-mode="custom" data-minutes="45">
+            ⚙️ Custom
+          </button>
+        </div>
+
+        <!-- Custom Duration Slider Drawer -->
+        <div id="custom-timer-container" class="mb-3 p-3 bg-surface-card/90 border border-surface-border rounded-2xl hidden transition-all">
+          <div class="flex justify-between items-center mb-1.5">
+            <span class="text-xs font-bold text-gray-300 flex items-center gap-1">
+              <i data-lucide="sliders" class="w-3.5 h-3.5 text-primary-light"></i> Durasi Custom Fokus
+            </span>
+            <span id="custom-duration-val" class="text-xs font-black text-primary-light bg-primary/20 px-2 py-0.5 rounded-md border border-primary/30">45 Min</span>
+          </div>
+          <input type="range" id="custom-duration-slider" min="5" max="120" value="45" step="5" class="custom-slider w-full cursor-pointer mb-1" />
+          <div class="flex justify-between text-[10px] text-gray-400 font-medium">
+            <span>5 Min</span>
+            <span>45 Min (🔥 1.2x)</span>
+            <span>120 Min</span>
+          </div>
         </div>
 
         <!-- Pet + Timer Card -->
@@ -344,8 +366,14 @@
             <div id="pet-mood" class="text-2xl mb-2 transition-all duration-300">😴</div>
 
             <!-- Timer Display -->
-            <div class="timer-display mb-4" id="timer-display">
+            <div class="timer-display mb-2" id="timer-display">
               <span id="timer-minutes">25</span><span class="timer-colon">:</span><span id="timer-seconds">00</span>
+            </div>
+
+            <!-- Dynamic Reward Estimate -->
+            <div id="reward-estimate-badge" class="mb-4 px-3 py-1 bg-amber-500/10 border border-amber-400/30 rounded-full flex items-center gap-1.5 text-xs text-amber-300 font-bold shadow-sm transition-all">
+              <span>🪙 Est. Hadiah: <span id="est-coins-text">50 Koin</span></span>
+              <span id="deep-work-badge" class="hidden text-[9px] bg-gradient-to-r from-amber-400 to-orange-500 text-amber-950 px-1.5 py-0.5 rounded-full font-black uppercase tracking-wider">🔥 1.2x Bonus</span>
             </div>
 
             <!-- Timer Controls -->
@@ -405,9 +433,14 @@
            PAGE: SHOP / PET SELECTOR
       ══════════════════════════════════════ -->
       <section id="page-shop" class="page-section hidden animate-fade-in">
-        <div class="mb-5">
-          <h2 class="text-xl font-black text-white mb-0.5">Pet Collection</h2>
-          <p class="text-sm text-gray-400">Pilih sahabat petualanganmu 🐾</p>
+        <div class="flex items-center justify-between mb-5">
+          <div>
+            <h2 class="text-xl font-black text-white mb-0.5">Pet Collection</h2>
+            <p class="text-sm text-gray-400">Pilih sahabat petualanganmu 🐾</p>
+          </div>
+          <button id="btn-open-redeem-shop" class="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-primary/30 to-secondary/30 border border-primary/50 text-xs font-bold text-pastel-purple hover:bg-primary/40 active:scale-95 transition-all shadow-md">
+            <i data-lucide="gift" class="w-3.5 h-3.5 text-secondary"></i> Redeem Code
+          </button>
         </div>
 
         <div class="grid grid-cols-1 gap-4">
@@ -737,6 +770,17 @@
         </div>
       </div>
 
+      <!-- Redeem Code Row -->
+      <div class="flex items-center justify-between py-3 border-b border-surface-border">
+        <div class="flex items-center gap-2">
+          <i data-lucide="gift" class="w-4 h-4 text-secondary"></i>
+          <span class="text-sm text-white">Tukar Kode Promo</span>
+        </div>
+        <button id="btn-open-redeem-settings" class="text-xs font-bold px-3 py-1.5 rounded-xl bg-secondary/20 border border-secondary/40 text-pink-300 hover:bg-secondary/30 transition-colors">
+          Redeem
+        </button>
+      </div>
+
       <!-- Reset Data -->
       <div class="flex items-center justify-between py-3">
         <div class="flex items-center gap-2">
@@ -750,6 +794,40 @@
 
       <!-- Version -->
       <p class="text-center text-xs text-gray-600 mt-4">Petdoro v1.0.0 🐾</p>
+    </div>
+  </div>
+
+  <!-- Redeem Code Modal -->
+  <div id="modal-redeem" class="fixed inset-0 z-50 flex items-center justify-center p-4 hidden">
+    <div class="absolute inset-0 bg-black/75 backdrop-blur-md" id="redeem-backdrop"></div>
+    <div class="relative z-10 w-full max-w-xs bg-surface-card border border-surface-border rounded-3xl p-6 shadow-2xl animate-slide-up">
+      <!-- Close button -->
+      <button id="btn-close-redeem" class="absolute top-4 right-4 text-gray-400 hover:text-white transition-colors" aria-label="Close">
+        <i data-lucide="x" class="w-5 h-5"></i>
+      </button>
+
+      <div class="text-center mb-5">
+        <div class="text-4xl mb-2 animate-bounce-soft inline-block">🎁</div>
+        <h3 class="text-xl font-black text-white">Redeem Code</h3>
+        <p class="text-xs text-gray-400 mt-1">Masukkan kode promo untuk klaim hadiah Koin & Pet!</p>
+      </div>
+
+      <div class="space-y-4">
+        <div>
+          <input
+            type="text"
+            id="redeem-input"
+            placeholder="KODE PROMO"
+            class="w-full px-4 py-3 bg-surface border border-surface-border rounded-xl text-white placeholder-gray-500 font-bold text-center uppercase tracking-widest focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/30 transition-all text-sm"
+            autocomplete="off"
+            spellcheck="false"
+          />
+        </div>
+
+        <button id="btn-submit-redeem" class="w-full py-3 rounded-2xl bg-gradient-to-r from-primary to-secondary text-white font-extrabold text-sm shadow-lg hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2">
+          <i data-lucide="check-circle" class="w-4 h-4"></i> Klaim / Redeem
+        </button>
+      </div>
     </div>
   </div>
 
