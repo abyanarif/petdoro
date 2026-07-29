@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="description" content="Petdoro – Gamified Pomodoro Timer Telegram Mini App. Rawat hewan peliharaan virtual sambil fokus belajar!" />
+  <title>Petdoro 🐾</title>
+
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary:   { DEFAULT: '#7C3AED', light: '#A78BFA', dark: '#5B21B6' },
+            secondary: { DEFAULT: '#EC4899', light: '#F9A8D4', dark: '#BE185D' },
+            accent:    { DEFAULT: '#06B6D4', light: '#67E8F9', dark: '#0E7490' },
+            surface:   { DEFAULT: '#1E1B2E', card: '#2A2540', border: '#3D3660' },
+            pastel:    { purple: '#C4B5FD', pink: '#FBCFE8', teal: '#99F6E4', yellow: '#FEF08A' },
+          },
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          animation: {
+            'float':        'float 3s ease-in-out infinite',
+            'pulse-glow':   'pulseGlow 2s ease-in-out infinite',
+            'bounce-soft':  'bounceSoft 1s ease-in-out infinite',
+            'slide-up':     'slideUp 0.4s cubic-bezier(0.34,1.56,0.64,1)',
+            'fade-in':      'fadeIn 0.3s ease',
+            'spin-slow':    'spin 3s linear infinite',
+            'wiggle':       'wiggle 0.5s ease-in-out',
+          },
+          keyframes: {
+            float:      { '0%,100%': { transform: 'translateY(0px)' }, '50%': { transform: 'translateY(-10px)' } },
+            pulseGlow:  { '0%,100%': { boxShadow: '0 0 15px rgba(124,58,237,0.4)' }, '50%': { boxShadow: '0 0 35px rgba(124,58,237,0.8)' } },
+            bounceSoft: { '0%,100%': { transform: 'translateY(0)' }, '50%': { transform: 'translateY(-6px)' } },
+            slideUp:    { from: { opacity: '0', transform: 'translateY(30px)' }, to: { opacity: '1', transform: 'translateY(0)' } },
+            fadeIn:     { from: { opacity: '0' }, to: { opacity: '1' } },
+            wiggle:     { '0%,100%': { transform: 'rotate(-5deg)' }, '50%': { transform: 'rotate(5deg)' } },
+          },
+          backgroundImage: {
+            'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
+          },
+        }
+      }
+    }
+  </script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+
+  <!-- Lottie Player -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+
+  <!-- Custom Styles -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="bg-surface font-sans text-white min-h-screen overflow-hidden select-none">
+
+  <!-- ═══════════════════════════════════════════════════════
+       BACKGROUND DECORATIONS
+  ═══════════════════════════════════════════════════════ -->
+  <div class="fixed inset-0 overflow-hidden pointer-events-none z-0">
+    <div class="bg-orb bg-orb-1"></div>
+    <div class="bg-orb bg-orb-2"></div>
+    <div class="bg-orb bg-orb-3"></div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════
+       ONBOARDING OVERLAY (shown only on first launch)
+  ═══════════════════════════════════════════════════════ -->
+  <div id="onboarding-overlay" class="fixed inset-0 z-60 flex flex-col items-center justify-center onboarding-bg hidden">
+    <!-- Decorative orbs inside onboarding -->
+    <div class="fixed inset-0 overflow-hidden pointer-events-none">
+      <div class="bg-orb bg-orb-1" style="opacity:0.25"></div>
+      <div class="bg-orb bg-orb-2" style="opacity:0.2"></div>
+    </div>
+
+    <!-- Onboarding Card -->
+    <div class="relative z-10 w-full max-w-sm px-4" id="onboarding-card">
+
+      <!-- Step indicator -->
+      <div class="flex justify-center gap-2 mb-6" id="onboarding-steps">
+        <div class="ob-step ob-step-active" id="ob-step-1"></div>
+        <div class="ob-step" id="ob-step-2"></div>
+      </div>
+
+      <!-- ── STEP 1: Welcome ──────────────────────────────── -->
+      <div id="ob-panel-1" class="ob-panel">
+        <div class="text-center mb-8">
+          <div class="text-6xl mb-3 animate-float inline-block">🐾</div>
+          <h1 class="text-3xl font-black text-white mb-2 leading-tight">Selamat Datang<br/>di <span class="gradient-text">Petdoro</span>!</h1>
+          <p class="text-sm text-gray-400 leading-relaxed">Rawat hewan peliharaan virtual sambil menjaga fokusmu. Setiap sesi Pomodoro = EXP untuk petmu!</p>
+        </div>
+
+        <!-- Feature highlights -->
+        <div class="space-y-3 mb-8">
+          <div class="ob-feature-row">
+            <div class="ob-feature-icon">🍅</div>
+            <div>
+              <div class="text-sm font-bold text-white">Pomodoro Timer</div>
+              <div class="text-xs text-gray-400">Focus 25 menit, break 5 menit</div>
+            </div>
+          </div>
+          <div class="ob-feature-row">
+            <div class="ob-feature-icon">⚡</div>
+            <div>
+              <div class="text-sm font-bold text-white">Kumpulkan EXP</div>
+              <div class="text-xs text-gray-400">Hewan berevolusi saat kamu fokus</div>
+            </div>
+          </div>
+          <div class="ob-feature-row">
+            <div class="ob-feature-icon">🔥</div>
+            <div>
+              <div class="text-sm font-bold text-white">Streak Harian</div>
+              <div class="text-xs text-gray-400">Fokus setiap hari untuk bonus</div>
+            </div>
+          </div>
+        </div>
+
+        <button id="btn-ob-next" class="ob-cta-btn w-full">
+          Pilih Hewan Pertamamu <span class="ml-1">→</span>
+        </button>
+      </div>
+
+      <!-- ── STEP 2: Pet Selection & Name ──────────────────── -->
+      <div id="ob-panel-2" class="ob-panel hidden">
+        <div class="text-center mb-6">
+          <h2 class="text-2xl font-black text-white mb-1">Pilih Temanmu 🐾</h2>
+          <p class="text-sm text-gray-400">Siapa yang akan menemani petualanganmu?</p>
+        </div>
+
+        <!-- Pet Selection Cards -->
+        <div class="grid grid-cols-2 gap-3 mb-5">
+
+          <!-- Crocodile -->
+          <button class="ob-pet-card" id="ob-card-crocodile" data-pet="crocodile" type="button">
+            <div class="ob-pet-card-inner">
+              <div class="ob-pet-img-wrap">
+                <img src="animal_assets/crocodile_0.png" alt="Crocodile"
+                  class="w-20 h-20 object-contain drop-shadow-lg transition-transform duration-300" />
+                <div class="ob-pet-selected-ring" id="ob-ring-crocodile"></div>
+              </div>
+              <div class="mt-2">
+                <div class="text-sm font-black text-white">Buaya 🐊</div>
+                <div class="text-[10px] text-gray-400 mt-0.5">Tangguh & berani</div>
+                <div class="ob-pet-tag ob-tag-nature mt-1.5">🌿 Nature</div>
+              </div>
+              <div class="ob-check-icon hidden" id="ob-check-crocodile">
+                <i data-lucide="check" class="w-3 h-3"></i>
+              </div>
+            </div>
+          </button>
+
+          <!-- Owl -->
+          <button class="ob-pet-card" id="ob-card-owl" data-pet="owl" type="button">
+            <div class="ob-pet-card-inner">
+              <div class="ob-pet-img-wrap">
+                <img src="animal_assets/owl_0.png" alt="Owl"
+                  class="w-20 h-20 object-contain drop-shadow-lg transition-transform duration-300" />
+                <div class="ob-pet-selected-ring" id="ob-ring-owl"></div>
+              </div>
+              <div class="mt-2">
+                <div class="text-sm font-black text-white">Hantu 🦉</div>
+                <div class="text-[10px] text-gray-400 mt-0.5">Bijak & misterius</div>
+                <div class="ob-pet-tag ob-tag-magic mt-1.5">✨ Magic</div>
+              </div>
+              <div class="ob-check-icon hidden" id="ob-check-owl">
+                <i data-lucide="check" class="w-3 h-3"></i>
+              </div>
+            </div>
+          </button>
+        </div>
+
+        <!-- Pet Name Input -->
+        <div class="mb-5">
+          <label class="block text-xs font-bold text-gray-300 mb-2 uppercase tracking-wider">
+            Beri Nama Hewanmu ✏️
+          </label>
+          <div class="ob-input-wrap">
+            <span class="ob-input-icon">🏷️</span>
+            <input
+              type="text"
+              id="ob-pet-name-input"
+              maxlength="20"
+              placeholder="Masukkan nama hewanmu..."
+              class="ob-name-input"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <span id="ob-name-count" class="ob-char-count">0/20</span>
+          </div>
+          <p id="ob-name-hint" class="text-[10px] text-gray-500 mt-1.5 ml-1 hidden">Nama minimal 2 karakter ya!</p>
+        </div>
+
+        <!-- Preview -->
+        <div class="ob-preview-chip" id="ob-preview" style="opacity:0;transform:translateY(6px)">
+          <span id="ob-preview-emoji">🥚</span>
+          <span id="ob-preview-text" class="text-xs text-gray-300">Pilih hewan & beri nama...</span>
+        </div>
+
+        <!-- Start Button -->
+        <button id="btn-ob-start" class="ob-cta-btn w-full mt-4" disabled>
+          <span id="ob-start-label">Mulai Petualangan! 🚀</span>
+        </button>
+
+        <!-- Back link -->
+        <button id="btn-ob-back" class="w-full mt-2 text-xs text-gray-500 hover:text-gray-300 transition-colors py-1">
+          ← Kembali
+        </button>
+      </div>
+
+    </div><!-- /onboarding-card -->
+  </div><!-- /#onboarding-overlay -->
+
+  <!-- ═══════════════════════════════════════════════════════
+       MAIN APP CONTAINER
+  ═══════════════════════════════════════════════════════ -->
+  <div id="app" class="relative z-10 flex flex-col h-screen max-w-md mx-auto overflow-hidden">
+
+    <!-- ── HEADER ────────────────────────────────────────── -->
+    <header id="main-header" class="flex-shrink-0 px-4 pt-3 pb-2">
+      <div class="flex items-center justify-between">
+        <!-- User Profile -->
+        <div class="flex items-center gap-2.5">
+          <div class="relative">
+            <img id="user-avatar" src="" alt="Avatar"
+              class="w-10 h-10 rounded-full object-cover border-2 border-primary-light shadow-lg bg-surface-card"
+              onerror="this.src='data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 40 40\'%3E%3Ccircle cx=\'20\' cy=\'20\' r=\'20\' fill=\'%237C3AED\'/%3E%3Ctext x=\'50%25\' y=\'55%25\' text-anchor=\'middle\' dominant-baseline=\'middle\' font-size=\'18\' fill=\'white\'%3E🐾%3C/text%3E%3C/svg%3E'" />
+            <div class="streak-badge absolute -bottom-1 -right-1 bg-amber-400 text-amber-900 text-[9px] font-black rounded-full w-4 h-4 flex items-center justify-center border border-surface">
+              🔥
+            </div>
+          </div>
+          <div>
+            <p id="user-name" class="text-sm font-bold text-white leading-tight">Trainer</p>
+            <p id="streak-text" class="text-[11px] text-pastel-yellow font-semibold">🔥 0 day streak</p>
+          </div>
+        </div>
+
+        <!-- Stats Pills -->
+        <div class="flex items-center gap-1.5">
+          <div class="stat-pill bg-amber-500/20 border border-amber-400/30 text-amber-300">
+            <span class="text-xs">🪙</span>
+            <span id="coins-display" class="text-xs font-bold">0</span>
+          </div>
+          <div class="stat-pill bg-primary/20 border border-primary-light/30 text-primary-light">
+            <span class="text-[10px]">⚡</span>
+            <span id="exp-display" class="text-xs font-bold">0</span>
+          </div>
+          <!-- Settings -->
+          <button id="btn-settings" class="icon-btn ml-1" aria-label="Settings">
+            <i data-lucide="settings" class="w-4 h-4 text-gray-400"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- XP Progress Bar -->
+      <div class="mt-2 flex items-center gap-2">
+        <span class="text-[10px] text-gray-400 font-medium whitespace-nowrap">Lv <span id="level-display">1</span></span>
+        <div class="flex-1 h-1.5 bg-surface-card rounded-full overflow-hidden">
+          <div id="xp-bar" class="h-full bg-gradient-to-r from-primary-light to-secondary rounded-full transition-all duration-700" style="width: 0%"></div>
+        </div>
+        <span id="xp-text" class="text-[10px] text-gray-400 font-medium whitespace-nowrap">0/100 XP</span>
+      </div>
+    </header>
+
+    <!-- ── PAGE CONTAINER ────────────────────────────────── -->
+    <main class="flex-1 overflow-y-auto overflow-x-hidden px-4 pb-20 scroll-smooth" id="page-container">
+
+      <!-- ══════════════════════════════════════
+           PAGE: HOME (Timer + Pet)
+      ══════════════════════════════════════ -->
+      <section id="page-home" class="page-section animate-fade-in">
+
+        <!-- Session Mode Selector -->
+        <div class="flex gap-2 mb-4">
+          <button class="session-btn active" data-mode="focus" data-duration="1500">
+            🎯 Focus
+          </button>
+          <button class="session-btn" data-mode="short" data-duration="300">
+            ☕ Short Break
+          </button>
+          <button class="session-btn" data-mode="long" data-duration="900">
+            🌙 Long Break
+          </button>
+        </div>
+
+        <!-- Pet + Timer Card -->
+        <div class="relative rounded-3xl overflow-hidden mb-4" id="timer-card">
+          <!-- Card Background Gradient -->
+          <div class="absolute inset-0 pet-card-bg"></div>
+
+          <!-- Card Content -->
+          <div class="relative p-5 flex flex-col items-center">
+
+            <!-- Pet Stage Label + Custom Name -->
+            <div class="flex flex-col items-center gap-1 mb-3">
+              <div class="flex items-center gap-1.5">
+                <div id="pet-stage-badge" class="stage-badge">🥚 Hatchling</div>
+              </div>
+              <div class="pet-info-line">
+                <span id="pet-species-label" class="text-pastel-purple font-bold">Crocodile</span>
+                <span class="text-gray-600">•</span>
+                <span id="pet-level-label" class="text-gray-400">Lv. 1</span>
+                <span class="text-gray-600">•</span>
+                <span id="pet-custom-name" class="text-pastel-pink font-bold pet-custom-name-text">–</span>
+              </div>
+            </div>
+
+            <!-- Pet Display Area -->
+            <div class="relative w-44 h-44 flex items-center justify-center mb-3">
+              <!-- Sandclock Lottie (behind pet, visible when running) -->
+              <div id="lottie-sandclock" class="absolute inset-0 opacity-0 transition-opacity duration-500 pointer-events-none scale-110"></div>
+
+              <!-- Pet Image -->
+              <div id="pet-container" class="relative z-10 w-36 h-36">
+                <img id="pet-image" src="animal_assets/crocodile_0.png" alt="Pet"
+                  class="w-full h-full object-contain drop-shadow-2xl transition-all duration-500 animate-float" />
+              </div>
+
+              <!-- Aura Ring (visible when timer running) -->
+              <div id="aura-ring" class="absolute inset-0 rounded-full border-2 border-primary/40 scale-90 opacity-0 transition-all duration-500 pointer-events-none animate-pulse-glow"></div>
+            </div>
+
+            <!-- Mood Indicator -->
+            <div id="pet-mood" class="text-2xl mb-2 transition-all duration-300">😴</div>
+
+            <!-- Timer Display -->
+            <div class="timer-display mb-4" id="timer-display">
+              <span id="timer-minutes">25</span><span class="timer-colon">:</span><span id="timer-seconds">00</span>
+            </div>
+
+            <!-- Timer Controls -->
+            <div class="flex items-center gap-4">
+              <button id="btn-reset" class="control-btn control-btn-ghost" aria-label="Reset">
+                <i data-lucide="rotate-ccw" class="w-5 h-5"></i>
+              </button>
+              <button id="btn-play" class="control-btn control-btn-primary" aria-label="Play">
+                <i data-lucide="play" class="w-6 h-6 ml-0.5"></i>
+              </button>
+              <button id="btn-pause" class="control-btn control-btn-ghost hidden" aria-label="Pause">
+                <i data-lucide="pause" class="w-5 h-5"></i>
+              </button>
+              <button id="btn-pet" class="control-btn control-btn-ghost" aria-label="Pet your pet" title="Pet your pet">
+                <i data-lucide="heart" class="w-5 h-5 text-pink-400"></i>
+              </button>
+            </div>
+
+            <!-- Session Counter -->
+            <div class="mt-4 flex items-center gap-1.5">
+              <span class="text-[11px] text-gray-400">Sesi hari ini:</span>
+              <div class="flex gap-1" id="session-dots"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Quick Stats Row -->
+        <div class="grid grid-cols-3 gap-2 mb-4">
+          <div class="quick-stat-card">
+            <div class="text-lg">🍅</div>
+            <div class="text-lg font-black text-white" id="stat-sessions">0</div>
+            <div class="text-[10px] text-gray-400">Sessions</div>
+          </div>
+          <div class="quick-stat-card">
+            <div class="text-lg">⏱️</div>
+            <div class="text-lg font-black text-white" id="stat-minutes">0</div>
+            <div class="text-[10px] text-gray-400">Minutes</div>
+          </div>
+          <div class="quick-stat-card">
+            <div class="text-lg">🏆</div>
+            <div class="text-lg font-black text-white" id="stat-level">1</div>
+            <div class="text-[10px] text-gray-400">Pet Level</div>
+          </div>
+        </div>
+
+        <!-- Tip Card -->
+        <div id="tip-card" class="tip-card mb-2">
+          <span class="text-sm">💡</span>
+          <p id="tip-text" class="text-xs text-gray-300 flex-1">Mulai sesi fokus untuk merawat hewan peliharaanmu!</p>
+          <button id="btn-dismiss-tip" class="text-gray-500 hover:text-gray-300 transition-colors">
+            <i data-lucide="x" class="w-3 h-3"></i>
+          </button>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           PAGE: SHOP / PET SELECTOR
+      ══════════════════════════════════════ -->
+      <section id="page-shop" class="page-section hidden animate-fade-in">
+        <div class="mb-5">
+          <h2 class="text-xl font-black text-white mb-0.5">Pet Collection</h2>
+          <p class="text-sm text-gray-400">Pilih sahabat petualanganmu 🐾</p>
+        </div>
+
+        <div class="grid grid-cols-1 gap-4">
+          <!-- Crocodile Card -->
+          <div class="pet-card" id="pet-card-crocodile" data-pet="crocodile">
+            <div class="pet-card-inner">
+              <div class="relative">
+                <img src="animal_assets/crocodile_2.png" alt="Crocodile" class="w-24 h-24 object-contain drop-shadow-xl" />
+                <div class="pet-card-level-badge" id="croc-level-badge">Lv 1</div>
+              </div>
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <h3 class="text-base font-black text-white">Buaya Kece</h3>
+                  <span class="text-xs bg-green-500/20 text-green-300 px-1.5 py-0.5 rounded-full font-semibold">🌿 Nature</span>
+                </div>
+                <p class="text-xs text-gray-400 mb-2">Buaya tangguh yang semakin kuat seiring waktu. Cocok untuk sesi fokus panjang!</p>
+                <div class="flex gap-1.5 mb-3">
+                  <div class="evo-stage" id="croc-evo-0">🥚</div>
+                  <div class="text-gray-600 text-sm">→</div>
+                  <div class="evo-stage" id="croc-evo-1">🐊</div>
+                  <div class="text-gray-600 text-sm">→</div>
+                  <div class="evo-stage" id="croc-evo-2">🦖</div>
+                </div>
+                <!-- XP Bar for this pet -->
+                <div class="mb-2">
+                  <div class="flex justify-between mb-0.5">
+                    <span class="text-[10px] text-gray-500">EXP</span>
+                    <span class="text-[10px] text-gray-500" id="croc-xp-text">0/100</span>
+                  </div>
+                  <div class="h-1.5 bg-surface rounded-full overflow-hidden">
+                    <div id="croc-xp-bar" class="h-full bg-gradient-to-r from-green-400 to-emerald-500 rounded-full transition-all duration-700" style="width:0%"></div>
+                  </div>
+                </div>
+                <button class="select-pet-btn w-full" id="btn-select-crocodile" data-pet="crocodile">
+                  <i data-lucide="check" class="w-4 h-4"></i> Pilih Buaya
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Owl Card -->
+          <div class="pet-card" id="pet-card-owl" data-pet="owl">
+            <div class="pet-card-inner">
+              <div class="relative">
+                <img src="animal_assets/owl_2.png" alt="Owl" class="w-24 h-24 object-contain drop-shadow-xl" />
+                <div class="pet-card-level-badge" id="owl-level-badge">Lv 1</div>
+              </div>
+              <div class="flex-1">
+                <div class="flex items-center gap-2 mb-1">
+                  <h3 class="text-base font-black text-white">Burung Hantu Bijak</h3>
+                  <span class="text-xs bg-purple-500/20 text-purple-300 px-1.5 py-0.5 rounded-full font-semibold">✨ Magic</span>
+                </div>
+                <p class="text-xs text-gray-400 mb-2">Hantu malam yang penuh kebijaksanaan. Sempurna untuk sesi belajar malam hari!</p>
+                <div class="flex gap-1.5 mb-3">
+                  <div class="evo-stage" id="owl-evo-0">🥚</div>
+                  <div class="text-gray-600 text-sm">→</div>
+                  <div class="evo-stage" id="owl-evo-1">🦉</div>
+                  <div class="text-gray-600 text-sm">→</div>
+                  <div class="evo-stage" id="owl-evo-2">🌙</div>
+                </div>
+                <div class="mb-2">
+                  <div class="flex justify-between mb-0.5">
+                    <span class="text-[10px] text-gray-500">EXP</span>
+                    <span class="text-[10px] text-gray-500" id="owl-xp-text">0/100</span>
+                  </div>
+                  <div class="h-1.5 bg-surface rounded-full overflow-hidden">
+                    <div id="owl-xp-bar" class="h-full bg-gradient-to-r from-purple-400 to-violet-500 rounded-full transition-all duration-700" style="width:0%"></div>
+                  </div>
+                </div>
+                <button class="select-pet-btn w-full" id="btn-select-owl" data-pet="owl">
+                  <i data-lucide="check" class="w-4 h-4"></i> Pilih Hantu
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ══════════════════════════════════════
+           PAGE: STATS / ACHIEVEMENTS
+      ══════════════════════════════════════ -->
+      <section id="page-stats" class="page-section hidden animate-fade-in">
+        <div class="mb-5">
+          <h2 class="text-xl font-black text-white mb-0.5">Statistik</h2>
+          <p class="text-sm text-gray-400">Perjalanan produktivitasmu 📊</p>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-2 gap-3 mb-5">
+          <div class="stats-big-card from-purple-900/50 to-purple-800/30">
+            <div class="text-3xl font-black text-primary-light" id="big-stat-sessions">0</div>
+            <div class="text-sm text-gray-300 font-semibold">Total Sesi</div>
+            <div class="text-xs text-gray-500">Pomodoro selesai</div>
+          </div>
+          <div class="stats-big-card from-pink-900/50 to-pink-800/30">
+            <div class="text-3xl font-black text-secondary" id="big-stat-minutes">0</div>
+            <div class="text-sm text-gray-300 font-semibold">Menit Fokus</div>
+            <div class="text-xs text-gray-500">Total waktu belajar</div>
+          </div>
+          <div class="stats-big-card from-amber-900/50 to-amber-800/30">
+            <div class="text-3xl font-black text-amber-300" id="big-stat-coins">0</div>
+            <div class="text-sm text-gray-300 font-semibold">Total Koin</div>
+            <div class="text-xs text-gray-500">Hadiah terkumpul</div>
+          </div>
+          <div class="stats-big-card from-teal-900/50 to-teal-800/30">
+            <div class="text-3xl font-black text-pastel-teal" id="big-stat-streak">0</div>
+            <div class="text-sm text-gray-300 font-semibold">Max Streak</div>
+            <div class="text-xs text-gray-500">Hari berturut-turut</div>
+          </div>
+        </div>
+
+        <!-- Achievements -->
+        <div class="mb-4">
+          <h3 class="text-base font-bold text-white mb-3">🏅 Achievements</h3>
+          <div class="space-y-2" id="achievements-list">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+
+        <!-- Weekly Activity -->
+        <div>
+          <h3 class="text-base font-bold text-white mb-3">📅 Aktivitas Mingguan</h3>
+          <div class="flex gap-2 justify-between" id="weekly-chart">
+            <!-- Filled by JS -->
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ── BOTTOM NAV ─────────────────────────────────────── -->
+    <nav class="bottom-nav" id="bottom-nav">
+      <button class="nav-item active" data-page="home">
+        <i data-lucide="timer" class="w-5 h-5"></i>
+        <span>Timer</span>
+      </button>
+      <button class="nav-item" data-page="shop">
+        <i data-lucide="paw-print" class="w-5 h-5"></i>
+        <span>Pets</span>
+      </button>
+      <button class="nav-item" data-page="stats">
+        <i data-lucide="bar-chart-2" class="w-5 h-5"></i>
+        <span>Stats</span>
+      </button>
+    </nav>
+
+  </div><!-- /#app -->
+
+
+  <!-- ═══════════════════════════════════════════════════════
+       MODALS & OVERLAYS
+  ═══════════════════════════════════════════════════════ -->
+
+  <!-- Session Complete Overlay -->
+  <div id="overlay-complete" class="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 hidden">
+    <div class="absolute inset-0 bg-black/70 backdrop-blur-sm"></div>
+    <div class="relative z-10 text-center max-w-xs w-full animate-slide-up">
+      <div id="lottie-complete" class="w-56 h-56 mx-auto -mb-4"></div>
+      <div class="bg-surface-card rounded-3xl p-6 border border-surface-border shadow-2xl">
+        <div class="text-4xl mb-2" id="complete-emoji">🎉</div>
+        <h2 class="text-2xl font-black text-white mb-1" id="complete-title">Sesi Selesai!</h2>
+        <p class="text-sm text-gray-400 mb-4" id="complete-subtitle">Hewan peliharaanmu senang!</p>
+        <div class="flex justify-center gap-4 mb-5">
+          <div class="reward-chip">
+            <span>🪙</span>
+            <span id="reward-coins" class="font-bold">+10</span>
+          </div>
+          <div class="reward-chip">
+            <span>⚡</span>
+            <span id="reward-exp" class="font-bold">+50</span>
+          </div>
+        </div>
+        <button id="btn-continue" class="w-full py-3 rounded-2xl bg-gradient-to-r from-primary to-secondary text-white font-bold text-base shadow-lg active:scale-95 transition-transform">
+          Lanjutkan! 🚀
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Level Up Overlay -->
+  <div id="overlay-levelup" class="fixed inset-0 z-50 flex flex-col items-center justify-center p-6 hidden">
+    <div class="absolute inset-0 bg-black/80 backdrop-blur-sm"></div>
+    <div class="relative z-10 text-center max-w-xs w-full animate-slide-up">
+      <div id="lottie-levelup" class="w-64 h-64 mx-auto -mb-8"></div>
+      <div class="bg-surface-card rounded-3xl p-6 border border-primary/50 shadow-2xl shadow-primary/30">
+        <div class="text-5xl mb-2">✨</div>
+        <h2 class="text-2xl font-black text-white mb-1">Level Up!</h2>
+        <p class="text-sm text-gray-400 mb-4" id="levelup-subtitle">Hewan peliharaanmu berevolusi!</p>
+        <div class="flex items-center justify-center gap-4 mb-5">
+          <img id="levelup-before" src="" alt="Before" class="w-16 h-16 object-contain opacity-50" />
+          <div class="text-3xl">→</div>
+          <img id="levelup-after" src="" alt="After" class="w-20 h-20 object-contain animate-wiggle" />
+        </div>
+        <button id="btn-levelup-ok" class="w-full py-3 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 text-white font-black text-base shadow-lg active:scale-95 transition-transform">
+          Keren! ⭐
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div id="modal-settings" class="fixed inset-0 z-40 flex items-end justify-center hidden">
+    <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" id="settings-backdrop"></div>
+    <div class="relative z-10 w-full max-w-md bg-surface-card rounded-t-3xl p-6 animate-slide-up border-t border-surface-border">
+      <div class="w-10 h-1 bg-gray-600 rounded-full mx-auto mb-5"></div>
+      <h3 class="text-lg font-black text-white mb-4">⚙️ Pengaturan</h3>
+
+      <!-- Sound Toggle -->
+      <div class="flex items-center justify-between py-3 border-b border-surface-border">
+        <div class="flex items-center gap-2">
+          <i data-lucide="volume-2" class="w-4 h-4 text-gray-400"></i>
+          <span class="text-sm text-white">Suara Notifikasi</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-sound" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <!-- Vibration Toggle -->
+      <div class="flex items-center justify-between py-3 border-b border-surface-border">
+        <div class="flex items-center gap-2">
+          <i data-lucide="smartphone" class="w-4 h-4 text-gray-400"></i>
+          <span class="text-sm text-white">Getaran</span>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="toggle-vibration" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+
+      <!-- Rename Pet -->
+      <div class="py-3 border-b border-surface-border">
+        <div class="flex items-center gap-2 mb-2">
+          <i data-lucide="pencil" class="w-4 h-4 text-gray-400"></i>
+          <span class="text-sm text-white">Nama Hewan</span>
+          <span id="settings-pet-current-name" class="text-xs text-primary-light font-semibold ml-auto">–</span>
+        </div>
+        <div class="flex gap-2">
+          <input
+            type="text"
+            id="settings-pet-name-input"
+            maxlength="20"
+            placeholder="Nama baru hewanmu..."
+            class="settings-name-input flex-1"
+            autocomplete="off"
+          />
+          <button id="btn-rename-pet" class="text-xs font-bold px-3 py-1.5 rounded-xl bg-primary/30 border border-primary/50 text-primary-light hover:bg-primary/50 transition-colors">
+            Simpan
+          </button>
+        </div>
+      </div>
+
+      <!-- Reset Data -->
+      <div class="flex items-center justify-between py-3">
+        <div class="flex items-center gap-2">
+          <i data-lucide="trash-2" class="w-4 h-4 text-red-400"></i>
+          <span class="text-sm text-white">Reset Data</span>
+        </div>
+        <button id="btn-reset-data" class="text-xs text-red-400 font-semibold border border-red-400/30 rounded-full px-3 py-1 hover:bg-red-400/10 transition-colors">
+          Reset
+        </button>
+      </div>
+
+      <!-- Version -->
+      <p class="text-center text-xs text-gray-600 mt-4">Petdoro v1.0.0 🐾</p>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 opacity-0 pointer-events-none transition-all duration-300 translate-y-4">
+    <div class="bg-surface-card border border-surface-border rounded-2xl px-4 py-2.5 shadow-xl flex items-center gap-2 max-w-xs">
+      <span id="toast-icon" class="text-lg">✅</span>
+      <span id="toast-message" class="text-sm text-white font-medium">Toast message</span>
+    </div>
+  </div>
+
+  <!-- App JS -->
+  <script src="app.js"></script>
+</body>
+</html>
