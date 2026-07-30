@@ -1,0 +1,10 @@
+{
+  "name": "petdoro",
+  "version": "1.0.0",
+  "description": "Gamified Pomodoro Timer Telegram Mini App",
+  "main": "app.js",
+  "scripts": {
+    "start": "npx serve ."
+  },
+  "dependencies": {}
+}
