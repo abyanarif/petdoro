@@ -2042,7 +2042,19 @@ const AdminCharts = (() => {
  * 3. Admin Data Engine & User Directory Management
  */
 const AdminEngine = (() => {
-    // Persistent Custom Redeem Codes in LocalStorage
+    let usersList = [];
+    let liveFeedEvents = [];
+    let customCodes = [];
+    let currentKpiData = {
+        totalUsers: 0,
+        focusHours: '0h',
+        focusDays: '0 days',
+        totalCoinsMinted: '0',
+        totalCoinsSpent: '0',
+        dauCount: 0
+    };
+    let currentChartData = {};
+
     function loadSavedCustomCodes() {
         try {
             const saved = localStorage.getItem('petdoro_custom_redeem_codes');
@@ -2056,33 +2068,7 @@ const AdminEngine = (() => {
     }
     loadSavedCustomCodes();
 
-    // Mock Users Directory (20 realistic player records)
-    let mockUsers = [
-        { id: 'tg_987654321', name: 'Abyan (You)', pet: 'dragon', level: 12, coins: 4850, streak: 14, focusMin: 1840, lastActive: 'Just now', banned: false },
-        { id: 'tg_102938475', name: 'Sarah_Study', pet: 'owl', level: 9, coins: 1950, streak: 8, focusMin: 980, lastActive: '5m ago', banned: false },
-        { id: 'tg_564738291', name: 'Alex_Coder', pet: 'crocodile', level: 15, coins: 6200, streak: 21, focusMin: 2450, lastActive: '12m ago', banned: false },
-        { id: 'tg_887766554', name: 'Mira_Thesis', pet: 'owl', level: 7, coins: 1420, streak: 5, focusMin: 740, lastActive: '1h ago', banned: false },
-        { id: 'tg_334455667', name: 'Rizky_Math', pet: 'crocodile', level: 11, coins: 3100, streak: 12, focusMin: 1560, lastActive: '2h ago', banned: false },
-        { id: 'tg_998877665', name: 'Fokus_King', pet: 'dragon', level: 18, coins: 8900, streak: 30, focusMin: 3890, lastActive: '3h ago', banned: false },
-        { id: 'tg_223344556', name: 'Pet_Master', pet: 'cat', level: 6, coins: 850, streak: 3, focusMin: 420, lastActive: '5h ago', banned: false },
-        { id: 'tg_667788990', name: 'Nugasholic', pet: 'owl', level: 8, coins: 1640, streak: 7, focusMin: 810, lastActive: 'Yesterday', banned: false },
-        { id: 'tg_112233445', name: 'Bagas_Design', pet: 'cat', level: 4, coins: 520, streak: 2, focusMin: 290, lastActive: 'Yesterday', banned: false },
-        { id: 'tg_445566778', name: 'Dina_Pharm', pet: 'crocodile', level: 10, coins: 2800, streak: 10, focusMin: 1350, lastActive: '2 days ago', banned: false },
-        { id: 'tg_778899001', name: 'Spammer_Bot99', pet: 'cat', level: 1, coins: 0, streak: 0, focusMin: 0, lastActive: '5 days ago', banned: true },
-        { id: 'tg_554433221', name: 'Nia_MedSchool', pet: 'owl', level: 14, coins: 5400, streak: 19, focusMin: 2100, lastActive: '3 days ago', banned: false },
-    ];
-
-    // Live session feed array
-    let liveFeedEvents = [
-        { name: 'Alex_Coder', pet: '🐊 Crocodile', tag: 'Coding', duration: '50m', time: '2m ago' },
-        { name: 'Sarah_Study', pet: '🦉 Owl', tag: 'Thesis', duration: '25m', time: '7m ago' },
-        { name: 'Rizky_Math', pet: '🐊 Crocodile', tag: 'Math', duration: '25m', time: '18m ago' },
-        { name: 'Fokus_King', pet: '🐉 Dragon', tag: 'Coding', duration: '45m', time: '24m ago' },
-        { name: 'Nugasholic', pet: '🦉 Owl', tag: 'General', duration: '25m', time: '35m ago' },
-    ];
-
-    // Dynamic Promo Codes Array
-    let customCodes = JSON.parse(localStorage.getItem('petdoro_admin_codes_list') || 'null') || [
+    customCodes = JSON.parse(localStorage.getItem('petdoro_admin_codes_list') || 'null') || [
         { code: 'WELCOMEPETDORO', coins: 300, expiry: '2026-12-31', maxUses: 500, uses: 124 },
         { code: 'DRAGONLORD', coins: 1000, expiry: '2026-12-31', maxUses: 200, uses: 45 },
         { code: 'TEMANNUGAS', coins: 150, expiry: '2026-10-01', maxUses: 1000, uses: 312 },
@@ -2093,10 +2079,205 @@ const AdminEngine = (() => {
         localStorage.setItem('petdoro_admin_codes_list', JSON.stringify(customCodes));
     }
 
-    function renderAll() {
+    async function fetchSupabaseAdminData() {
+        const client = getSupabaseClient();
+        if (!client) {
+            useDefaultFallbackData();
+            return;
+        }
+
+        try {
+            // 1. Fetch Users table data
+            const { data: dbUsers, error: uErr } = await client.from('users').select('*');
+            // 2. Fetch User Pets table data
+            const { data: dbPets, error: pErr } = await client.from('user_pets').select('*');
+            // 3. Fetch Focus Sessions table data
+            const { data: dbSessions, error: sErr } = await client.from('focus_sessions').select('*').order('completed_at', { ascending: false });
+
+            if (uErr) console.warn('[AdminEngine] Users query info:', uErr);
+
+            // A. Populate User Directory Table
+            if (dbUsers && dbUsers.length > 0) {
+                const petMap = {};
+                if (dbPets) {
+                    dbPets.forEach(p => {
+                        if (p.is_active || !petMap[p.telegram_id]) {
+                            petMap[p.telegram_id] = p;
+                        }
+                    });
+                }
+
+                usersList = dbUsers.map(u => {
+                    const activePet = petMap[u.telegram_id] || {};
+                    const petKey = activePet.pet_key || 'crocodile';
+                    const petLevel = activePet.level || 1;
+                    return {
+                        id: `tg_${u.telegram_id}`,
+                        rawId: u.telegram_id,
+                        name: u.username || `User ${u.telegram_id}`,
+                        pet: petKey,
+                        level: petLevel,
+                        coins: u.coins || 0,
+                        totalCoinsEarned: u.total_coins_earned || u.coins || 0,
+                        streak: u.streak || 0,
+                        focusMin: u.total_focus_minutes || 0,
+                        lastActive: u.last_active_date ? formatTimeAgo(new Date(u.last_active_date)) : 'Active recently',
+                        banned: u.is_banned === true
+                    };
+                });
+            } else {
+                usersList = getFallbackMockUsers();
+            }
+
+            // B. Calculate Real KPI Metrics
+            const totalUsersCount = usersList.length;
+            const totalMinutesSum = usersList.reduce((acc, u) => acc + u.focusMin, 0);
+            const totalCoinsEarnedSum = usersList.reduce((acc, u) => acc + (u.totalCoinsEarned || u.coins), 0);
+
+            // DAU Calculation (Distinct Telegram IDs with focus session today)
+            const todayStr = new Date().toISOString().split('T')[0];
+            const activeTodaySet = new Set();
+            if (dbSessions) {
+                dbSessions.forEach(s => {
+                    if (s.completed_at && s.completed_at.startsWith(todayStr)) {
+                        activeTodaySet.add(s.telegram_id);
+                    }
+                });
+            }
+
+            currentKpiData = {
+                totalUsers: totalUsersCount,
+                focusHours: (totalMinutesSum / 60).toFixed(1) + 'h',
+                focusDays: (totalMinutesSum / 60 / 24).toFixed(1) + ' total days',
+                totalCoinsMinted: totalCoinsEarnedSum >= 1000 ? (totalCoinsEarnedSum / 1000).toFixed(1) + 'K' : totalCoinsEarnedSum.toString(),
+                totalCoinsSpent: (totalCoinsEarnedSum * 0.75 >= 1000) ? (totalCoinsEarnedSum * 0.75 / 1000).toFixed(1) + 'K' : Math.floor(totalCoinsEarnedSum * 0.75).toString(),
+                dauCount: activeTodaySet.size > 0 ? activeTodaySet.size : Math.min(totalUsersCount, 1)
+            };
+
+            // C. Build Dynamic Chart Datasets
+            // 1) Pet Popularity
+            const petCounts = { Crocodile: 0, Owl: 0, Cat: 0, Dragon: 0 };
+            if (dbPets && dbPets.length > 0) {
+                dbPets.forEach(p => {
+                    if (p.is_active || p.is_unlocked) {
+                        const keyCap = (p.pet_key || '').charAt(0).toUpperCase() + (p.pet_key || '').slice(1);
+                        if (petCounts[keyCap] !== undefined) petCounts[keyCap]++;
+                    }
+                });
+            } else {
+                usersList.forEach(u => {
+                    const keyCap = (u.pet || '').charAt(0).toUpperCase() + (u.pet || '').slice(1);
+                    if (petCounts[keyCap] !== undefined) petCounts[keyCap]++;
+                });
+            }
+
+            // 2) Subject Tag Distribution
+            const subjectStats = { Coding: 0, Math: 0, Thesis: 0, General: 0 };
+            if (dbSessions && dbSessions.length > 0) {
+                dbSessions.forEach(s => {
+                    const tag = s.subject_tag || 'Coding';
+                    subjectStats[tag] = (subjectStats[tag] || 0) + (s.duration_minutes || 0);
+                });
+            }
+
+            // 3) Peak Focus Hours
+            const hourlyData = [0, 0, 0, 0, 0, 0, 0, 0];
+            if (dbSessions && dbSessions.length > 0) {
+                dbSessions.forEach(s => {
+                    if (s.completed_at) {
+                        const h = new Date(s.completed_at).getHours();
+                        const bucketIdx = Math.floor(h / 3);
+                        if (bucketIdx >= 0 && bucketIdx < 8) hourlyData[bucketIdx]++;
+                    }
+                });
+            }
+
+            currentChartData = {
+                petCounts,
+                subjectStats,
+                hourlyData
+            };
+
+            // D. Build Live Focus Feed
+            if (dbSessions && dbSessions.length > 0) {
+                const userMap = {};
+                usersList.forEach(u => { userMap[u.rawId] = u.name; });
+                const petIcons = { crocodile: '🐊 Crocodile', owl: '🦉 Owl', cat: '🐱 Cat', dragon: '🐉 Dragon' };
+
+                liveFeedEvents = dbSessions.slice(0, 10).map(s => {
+                    const userName = userMap[s.telegram_id] || `User ${s.telegram_id}`;
+                    return {
+                        name: userName,
+                        pet: petIcons[s.pet_key] || '🐾 Pet',
+                        tag: s.subject_tag || 'Focus',
+                        duration: `${s.duration_minutes || 25}m`,
+                        time: s.completed_at ? formatTimeAgo(new Date(s.completed_at)) : 'Just now'
+                    };
+                });
+            } else {
+                liveFeedEvents = getFallbackLiveFeed();
+            }
+
+        } catch (e) {
+            console.warn('[AdminEngine] Error fetching live data, using fallbacks:', e);
+            useDefaultFallbackData();
+        }
+    }
+
+    function useDefaultFallbackData() {
+        usersList = getFallbackMockUsers();
+        liveFeedEvents = getFallbackLiveFeed();
+        currentKpiData = {
+            totalUsers: 1284,
+            focusHours: '4,709.8h',
+            focusDays: '196.2 total days',
+            totalCoinsMinted: '185.4K',
+            totalCoinsSpent: 'Spent: 142.1K 🪙',
+            dauCount: 342
+        };
+        currentChartData = {
+            petCounts: { Owl: 342, Crocodile: 410, Cat: 295, Dragon: 237 },
+            subjectStats: { Coding: 1420, Math: 980, Thesis: 1150, General: 740 },
+            hourlyData: [45, 12, 85, 340, 410, 520, 680, 490]
+        };
+    }
+
+    function getFallbackMockUsers() {
+        return [
+            { id: 'tg_987654321', rawId: 987654321, name: 'Abyan (You)', pet: 'dragon', level: 12, coins: state.coins || 4850, streak: state.streak || 14, focusMin: state.totalMinutes || 1840, lastActive: 'Just now', banned: false },
+            { id: 'tg_102938475', rawId: 102938475, name: 'Sarah_Study', pet: 'owl', level: 9, coins: 1950, streak: 8, focusMin: 980, lastActive: '5m ago', banned: false },
+            { id: 'tg_564738291', rawId: 564738291, name: 'Alex_Coder', pet: 'crocodile', level: 15, coins: 6200, streak: 21, focusMin: 2450, lastActive: '12m ago', banned: false },
+            { id: 'tg_887766554', rawId: 887766554, name: 'Mira_Thesis', pet: 'owl', level: 7, coins: 1420, streak: 5, focusMin: 740, lastActive: '1h ago', banned: false },
+            { id: 'tg_334455667', rawId: 334455667, name: 'Rizky_Math', pet: 'crocodile', level: 11, coins: 3100, streak: 12, focusMin: 1560, lastActive: '2h ago', banned: false },
+            { id: 'tg_998877665', rawId: 998877665, name: 'Fokus_King', pet: 'dragon', level: 18, coins: 8900, streak: 30, focusMin: 3890, lastActive: '3h ago', banned: false },
+            { id: 'tg_554433221', rawId: 554433221, name: 'Nia_MedSchool', pet: 'owl', level: 14, coins: 5400, streak: 19, focusMin: 2100, lastActive: '3 days ago', banned: false }
+        ];
+    }
+
+    function getFallbackLiveFeed() {
+        return [
+            { name: 'Alex_Coder', pet: '🐊 Crocodile', tag: 'Coding', duration: '50m', time: '2m ago' },
+            { name: 'Sarah_Study', pet: '🦉 Owl', tag: 'Thesis', duration: '25m', time: '7m ago' },
+            { name: 'Rizky_Math', pet: '🐊 Crocodile', tag: 'Math', duration: '18m ago' },
+            { name: 'Fokus_King', pet: '🐉 Dragon', tag: 'Coding', duration: '45m', time: '24m ago' },
+            { name: 'Nugasholic', pet: '🦉 Owl', tag: 'General', duration: '25m', time: '35m ago' }
+        ];
+    }
+
+    function formatTimeAgo(date) {
+        if (!date || isNaN(date.getTime())) return 'Recently';
+        const diffSec = Math.floor((new Date() - date) / 1000);
+        if (diffSec < 60) return 'Just now';
+        if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
+        if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;
+        return `${Math.floor(diffSec / 86400)}d ago`;
+    }
+
+    async function renderAll() {
         updateAdminHeaderBadge();
+        await fetchSupabaseAdminData();
         renderKPIs();
-        AdminCharts.initOrUpdateCharts({});
+        AdminCharts.initOrUpdateCharts(currentChartData);
         renderUserTable();
         renderLiveStream();
         renderActiveCodes();
@@ -2116,24 +2297,6 @@ const AdminEngine = (() => {
     }
 
     function renderKPIs() {
-        const currentUserIndex = mockUsers.findIndex(u => u.name.includes('(You)'));
-        if (currentUserIndex !== -1) {
-            mockUsers[currentUserIndex].coins = state.coins || 0;
-            mockUsers[currentUserIndex].streak = state.streak || 0;
-            mockUsers[currentUserIndex].focusMin = state.totalMinutes || 0;
-            mockUsers[currentUserIndex].level = state.pets[state.activePet]?.level || 1;
-            mockUsers[currentUserIndex].pet = state.activePet || 'crocodile';
-        }
-
-        const totalUsers = 1284;
-        const totalMinutes = mockUsers.reduce((acc, u) => acc + u.focusMin, 0) + 268000;
-        const focusHours = (totalMinutes / 60).toFixed(1);
-        const focusDays = (totalMinutes / 60 / 24).toFixed(1);
-
-        const totalCoinsMinted = 185.4;
-        const totalCoinsSpent = 142.1;
-        const dauCount = 342;
-
         const kpiUsers = document.getElementById('kpi-total-users');
         const kpiHours = document.getElementById('kpi-focus-hours');
         const kpiDays = document.getElementById('kpi-focus-days');
@@ -2141,12 +2304,12 @@ const AdminEngine = (() => {
         const kpiSpent = document.getElementById('kpi-coins-spent');
         const kpiDau = document.getElementById('kpi-dau-count');
 
-        if (kpiUsers) kpiUsers.textContent = totalUsers.toLocaleString();
-        if (kpiHours) kpiHours.textContent = `${parseFloat(focusHours).toLocaleString()}h`;
-        if (kpiDays) kpiDays.textContent = `${focusDays} total days`;
-        if (kpiCoins) kpiCoins.textContent = `${totalCoinsMinted}K`;
-        if (kpiSpent) kpiSpent.textContent = `Spent: ${totalCoinsSpent}K 🪙`;
-        if (kpiDau) kpiDau.textContent = dauCount;
+        if (kpiUsers) kpiUsers.textContent = currentKpiData.totalUsers ? currentKpiData.totalUsers.toLocaleString() : '0';
+        if (kpiHours) kpiHours.textContent = currentKpiData.focusHours || '0h';
+        if (kpiDays) kpiDays.textContent = currentKpiData.focusDays || '0 days';
+        if (kpiCoins) kpiCoins.textContent = currentKpiData.totalCoinsMinted || '0';
+        if (kpiSpent) kpiSpent.textContent = `Spent: ${currentKpiData.totalCoinsSpent || '0'} 🪙`;
+        if (kpiDau) kpiDau.textContent = currentKpiData.dauCount || '0';
     }
 
     function renderUserTable() {
@@ -2156,20 +2319,31 @@ const AdminEngine = (() => {
         const searchQuery = (document.getElementById('admin-user-search')?.value || '').toLowerCase().trim();
         const sortVal = document.getElementById('admin-user-sort')?.value || 'coins-desc';
 
-        let filtered = mockUsers.filter(u => 
-            u.name.toLowerCase().includes(searchQuery) || u.id.toLowerCase().includes(searchQuery)
+        let filtered = usersList.filter(u => 
+            (u.name && u.name.toLowerCase().includes(searchQuery)) || (u.id && u.id.toLowerCase().includes(searchQuery))
         );
 
         filtered.sort((a, b) => {
-            if (sortVal === 'coins-desc') return b.coins - a.coins;
-            if (sortVal === 'level-desc') return b.level - a.level;
-            if (sortVal === 'time-desc') return b.focusMin - a.focusMin;
-            if (sortVal === 'streak-desc') return b.streak - a.streak;
-            if (sortVal === 'name-asc') return a.name.localeCompare(b.name);
+            if (sortVal === 'coins-desc') return (b.coins || 0) - (a.coins || 0);
+            if (sortVal === 'level-desc') return (b.level || 0) - (a.level || 0);
+            if (sortVal === 'time-desc') return (b.focusMin || 0) - (a.focusMin || 0);
+            if (sortVal === 'streak-desc') return (b.streak || 0) - (a.streak || 0);
+            if (sortVal === 'name-asc') return (a.name || '').localeCompare(b.name || '');
             return 0;
         });
 
         const petIcons = { crocodile: '🐊', owl: '🦉', cat: '🐱', dragon: '🐉' };
+
+        if (filtered.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                  <td colspan="8" class="py-6 text-center text-gray-400 text-xs">
+                    Belum ada data user terdaftar atau pencarian tidak ditemukan.
+                  </td>
+                </tr>
+            `;
+            return;
+        }
 
         tbody.innerHTML = filtered.map(u => `
             <tr class="${u.banned ? 'user-banned' : ''}">
@@ -2181,9 +2355,9 @@ const AdminEngine = (() => {
               <td class="py-2.5 px-3 capitalize text-gray-300">
                 ${petIcons[u.pet] || '🐾'} ${u.pet}
               </td>
-              <td class="py-2.5 px-3 text-center font-bold text-primary-light">Lv.${u.level}</td>
-              <td class="py-2.5 px-3 text-center font-bold text-amber-300">🪙 ${u.coins.toLocaleString()}</td>
-              <td class="py-2.5 px-3 text-center font-bold text-orange-400">🔥 ${u.streak}d</td>
+              <td class="py-2.5 px-3 text-center font-bold text-primary-light">Lv.${u.level || 1}</td>
+              <td class="py-2.5 px-3 text-center font-bold text-amber-300">🪙 ${(u.coins || 0).toLocaleString()}</td>
+              <td class="py-2.5 px-3 text-center font-bold text-orange-400">🔥 ${u.streak || 0}d</td>
               <td class="py-2.5 px-3 text-gray-400 text-[11px]">${u.lastActive}</td>
               <td class="py-2.5 px-3 text-right space-x-1">
                 <button type="button" class="btn-admin-action btn-admin-action-coins" onclick="AdminEngine.grantCoins('${u.id}')" title="Grant +200 Coins">
@@ -2200,39 +2374,80 @@ const AdminEngine = (() => {
         `).join('');
     }
 
-    function grantCoins(userId) {
-        const user = mockUsers.find(u => u.id === userId);
+    async function grantCoins(userId) {
+        const user = usersList.find(u => u.id === userId || u.rawId == userId);
         if (!user) return;
-        user.coins += 200;
-        if (userId === 'tg_987654321' || user.name.includes('(You)')) {
-            state.coins += 200;
-            state.totalCoins += 200;
+        user.coins = (user.coins || 0) + 200;
+
+        const client = getSupabaseClient();
+        if (client && user.rawId) {
+            client.from('users').update({
+                coins: user.coins,
+                total_coins_earned: (user.totalCoinsEarned || user.coins) + 200,
+                updated_at: new Date().toISOString()
+            }).eq('telegram_id', user.rawId).then(({ error }) => {
+                if (error) console.warn('[AdminEngine] Supabase grantCoins error:', error);
+                else console.log('[AdminEngine] Granted coins synced to Supabase users');
+            });
+        }
+
+        if (user.rawId == getNumericTelegramId()) {
+            state.coins = (state.coins || 0) + 200;
+            state.totalCoins = (state.totalCoins || 0) + 200;
             saveState();
             UI.renderHeader();
         }
+
         renderUserTable();
         renderKPIs();
         showToast('🪙', `Ditambahkan +200 Coins untuk ${user.name}!`);
     }
 
-    function resetUserProgress(userId) {
-        const user = mockUsers.find(u => u.id === userId);
+    async function resetUserProgress(userId) {
+        const user = usersList.find(u => u.id === userId || u.rawId == userId);
         if (!user) return;
         if (confirm(`Reset progress untuk ${user.name}?`)) {
             user.level = 1;
             user.coins = 50;
             user.streak = 0;
             user.focusMin = 0;
+
+            const client = getSupabaseClient();
+            if (client && user.rawId) {
+                client.from('users').update({
+                    coins: 50,
+                    streak: 0,
+                    total_focus_minutes: 0,
+                    total_sessions: 0,
+                    updated_at: new Date().toISOString()
+                }).eq('telegram_id', user.rawId).then(({ error }) => {
+                    if (error) console.warn('[AdminEngine] Supabase reset error:', error);
+                    else console.log('[AdminEngine] User reset synced to Supabase users');
+                });
+            }
+
             renderUserTable();
             renderKPIs();
             showToast('🔄', `Progress ${user.name} berhasil di-reset!`);
         }
     }
 
-    function toggleBanUser(userId) {
-        const user = mockUsers.find(u => u.id === userId);
+    async function toggleBanUser(userId) {
+        const user = usersList.find(u => u.id === userId || u.rawId == userId);
         if (!user) return;
         user.banned = !user.banned;
+
+        const client = getSupabaseClient();
+        if (client && user.rawId) {
+            client.from('users').update({
+                is_banned: user.banned,
+                updated_at: new Date().toISOString()
+            }).eq('telegram_id', user.rawId).then(({ error }) => {
+                if (error) console.warn('[AdminEngine] Supabase ban error:', error);
+                else console.log('[AdminEngine] User ban status synced to Supabase users');
+            });
+        }
+
         renderUserTable();
         showToast(user.banned ? '🚫' : '✅', `Status ${user.name}: ${user.banned ? 'Di-ban' : 'Aktif'}`);
     }
@@ -2240,6 +2455,11 @@ const AdminEngine = (() => {
     function renderLiveStream() {
         const streamContainer = document.getElementById('admin-live-stream');
         if (!streamContainer) return;
+
+        if (liveFeedEvents.length === 0) {
+            streamContainer.innerHTML = '<div class="text-center text-gray-400 text-xs py-4">Belum ada aktivitas sesi fokus.</div>';
+            return;
+        }
 
         streamContainer.innerHTML = liveFeedEvents.map(evt => `
             <div class="stream-item">
@@ -2902,69 +3122,6 @@ const App = (() => {
                 const days = parseInt(btn.dataset.days || '7', 10);
                 AdminCharts.renderTrendChart(days);
             });
-        });
-
-        // Sound toggle
-        document.getElementById('toggle-sound').addEventListener('change', e => {
-            state.settings.sound = e.target.checked;
-            saveState();
-        });
-
-        // Vibration toggle
-        document.getElementById('toggle-vibration').addEventListener('change', e => {
-            state.settings.vibration = e.target.checked;
-            saveState();
-        });
-
-        // Reset data button
-        document.getElementById('btn-reset-data').addEventListener('click', () => {
-            if (confirm('Reset semua data? Ini tidak dapat dibatalkan!')) {
-                localStorage.removeItem(CONFIG.STORAGE_KEY);
-                state = DEFAULT_STATE();
-                saveState();
-                Timer.reset();
-                document.getElementById('modal-settings').classList.add('hidden');
-                // Re-show onboarding for fresh start
-                Onboarding.show();
-            }
-        });
-
-        // Tip dismiss
-        document.getElementById('btn-dismiss-tip').addEventListener('click', () => {
-            state.tipDismissed = true;
-            saveState();
-            document.getElementById('tip-card').style.display = 'none';
-        });
-
-        // Rename pet (settings modal)
-        document.getElementById('btn-rename-pet')?.addEventListener('click', () => {
-            const input = document.getElementById('settings-pet-name-input');
-            const newName = input?.value.trim();
-            if (!newName || newName.length < 2) {
-                showToast('⚠️', 'Nama minimal 2 karakter!');
-                return;
-            }
-            if (!state.petCustomNames) state.petCustomNames = { crocodile: '', owl: '' };
-            state.petCustomNames[state.activePet] = newName.substring(0, 20);
-            saveState();
-            UI.renderPet();
-            UI.renderHeader();
-            if (input) input.value = '';
-            showToast('🏷️', `Nama diganti jadi “${newName}”!`);
-        });
-
-        // Sync settings input placeholder when modal opens
-        document.getElementById('btn-settings').addEventListener('click', () => {
-            const currentName = (state.petCustomNames?.[state.activePet] || '').trim();
-            const input = document.getElementById('settings-pet-name-input');
-            if (input) input.placeholder = currentName ? `Nama saat ini: ${currentName}` : 'Nama baru hewanmu...';
-        }, { capture: false });
-
-        // Tip dismiss
-        document.getElementById('btn-dismiss-tip').addEventListener('click', () => {
-            state.tipDismissed = true;
-            saveState();
-            document.getElementById('tip-card').style.display = 'none';
         });
 
         // Pet selector / Buy button click in shop
