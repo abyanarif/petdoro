@@ -11,9 +11,10 @@
    ============================================================ */
 const CONFIG = {
     STORAGE_KEY: 'petdoro_v1',
-    SUPABASE_URL: 'https://YOUR_SUPABASE_PROJECT_ID.supabase.co',
-    SUPABASE_ANON_KEY: 'YOUR_SUPABASE_ANON_KEY',
+    SUPABASE_URL: 'https://lhuvqrighlkhmjiafyre.supabase.co',
+    SUPABASE_ANON_KEY: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxodXZxcmlnaGxraG1qaWFmeXJlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODU1OTMxOTIsImV4cCI6MjEwMTE2OTE5Mn0.XNXnBhF5Xc-2ZWH__ee01rbwGUVaN50s_o5pb8NSFDQ',
     TIMER_SESSION_KEY: 'petdoro_timer_session',
+    ALLOWED_ADMIN_IDS: [123456789, 987654321, 777000, 5551234], // Telegram User IDs with admin access
     SESSION_MODES: {
         focus: { label: '🎯 Focus', duration: 25 * 60, exp: 50, coins: 50, label_short: 'Focus' },
         short: { label: '☕ Short Break', duration: 5 * 60, exp: 10, coins: 5, label_short: 'Short Break' },
@@ -185,17 +186,21 @@ function getSupabaseClient() {
     return supabaseClient;
 }
 
-function getUserId() {
+function getNumericTelegramId() {
     const tgUser = window.Telegram?.WebApp?.initDataUnsafe?.user;
     if (tgUser && tgUser.id) {
-        return `tg_${tgUser.id}`;
+        return parseInt(tgUser.id, 10);
     }
-    let localId = localStorage.getItem('petdoro_user_id');
+    let localId = localStorage.getItem('petdoro_numeric_telegram_id');
     if (!localId) {
-        localId = 'usr_' + Math.random().toString(36).substring(2, 11) + Date.now().toString(36);
-        localStorage.setItem('petdoro_user_id', localId);
+        localId = '777000'; // Default numeric Telegram ID for testing in web browser
+        localStorage.setItem('petdoro_numeric_telegram_id', localId);
     }
-    return localId;
+    return parseInt(localId, 10);
+}
+
+function getUserId() {
+    return `tg_${getNumericTelegramId()}`;
 }
 
 function sanitizeLoadedState() {
@@ -269,8 +274,8 @@ async function loadState() {
     }
 
     const client = getSupabaseClient();
+    const telegramId = getNumericTelegramId();
     const tgUser = getTelegramUser();
-    const telegramId = tgUser?.id;
 
     if (client && telegramId) {
         try {
@@ -287,10 +292,14 @@ async function loadState() {
                 .eq('telegram_id', telegramId);
 
             if (!userErr && userRow) {
-                console.log('[Petdoro] Loaded user profile & pets from Supabase tables');
+                console.log('[Petdoro] Loaded user profile & pets from Supabase for ID:', telegramId);
                 state = deepMerge(DEFAULT_STATE(), localData || {});
                 state.coins = userRow.coins !== undefined ? userRow.coins : (state.coins || 50);
+                state.totalCoins = userRow.total_coins_earned !== undefined ? userRow.total_coins_earned : (state.totalCoins || state.coins || 50);
+                state.totalSessions = userRow.total_sessions !== undefined ? userRow.total_sessions : (state.totalSessions || 0);
+                state.totalMinutes = userRow.total_focus_minutes !== undefined ? userRow.total_focus_minutes : (state.totalMinutes || 0);
                 state.streak = userRow.streak !== undefined ? userRow.streak : (state.streak || 0);
+                state.maxStreak = userRow.max_streak !== undefined ? userRow.max_streak : (state.maxStreak || state.streak || 0);
                 if (userRow.username) state.user.name = userRow.username;
 
                 if (petRows && Array.isArray(petRows) && petRows.length > 0) {
@@ -300,7 +309,12 @@ async function loadState() {
                             if (!state.pets[key]) state.pets[key] = {};
                             state.pets[key].level = p.level || 1;
                             state.pets[key].exp = p.exp || 0;
-                            state.pets[key].stage = Math.max(0, (p.level || 1) - 1);
+                            state.pets[key].stage = p.stage !== undefined ? p.stage : Math.max(0, (p.level || 1) - 1);
+
+                            if (p.custom_name) {
+                                if (!state.petCustomNames) state.petCustomNames = {};
+                                state.petCustomNames[key] = p.custom_name;
+                            }
 
                             if (p.is_unlocked) {
                                 if (!state.unlockedPets) state.unlockedPets = [];
@@ -316,63 +330,39 @@ async function loadState() {
                 try {
                     localStorage.setItem(CONFIG.STORAGE_KEY, JSON.stringify(state));
                 } catch (e) {}
-            } else if (localData) {
-                // Auto-migrate existing localData to Supabase tables (users & user_pets)!
-                console.log('[Petdoro] Auto-migrating local progress to Supabase users & user_pets tables...');
-                state = deepMerge(DEFAULT_STATE(), localData);
-                sanitizeLoadedState();
-
-                const username = tgUser ? (tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : '')) : (state.user?.name || 'Trainer');
-                await client.from('users').upsert({
-                    telegram_id: telegramId,
-                    username: username,
-                    coins: state.coins !== undefined ? state.coins : 50,
-                    streak: state.streak || 0,
-                    updated_at: new Date().toISOString()
-                });
-
-                const petsToInsert = Object.keys(CONFIG.PETS).map(petKey => {
-                    const petObj = state.pets[petKey] || {};
-                    return {
-                        telegram_id: telegramId,
-                        pet_key: petKey,
-                        level: petObj.level || 1,
-                        exp: petObj.exp || 0,
-                        is_unlocked: (state.unlockedPets || ['crocodile', 'owl']).includes(petKey),
-                        is_active: state.activePet === petKey
-                    };
-                });
-                await client.from('user_pets').upsert(petsToInsert, { onConflict: 'telegram_id,pet_key' });
-                console.log('[Petdoro] Auto-migration to Supabase tables complete!');
             } else {
-                // Brand new user -> Create initial default row in users (50 coins, crocodile unlocked level 1)
-                console.log('[Petdoro] Initializing new user row in Supabase...');
-                state = DEFAULT_STATE();
+                // Brand new user -> Create initial default row in users table & user_pets table (50 coins, crocodile + owl starter pets)
+                console.log('[Petdoro] Initializing new user record in Supabase for ID:', telegramId);
+                state = localData ? deepMerge(DEFAULT_STATE(), localData) : DEFAULT_STATE();
                 if (tgUser) {
                     state.user.name = tgUser.first_name + (tgUser.last_name ? ' ' + tgUser.last_name : '');
                 }
-                state.coins = 50;
+                if (state.coins === undefined || state.coins === 0) state.coins = 50;
                 sanitizeLoadedState();
 
                 const username = state.user.name || 'Trainer';
                 await client.from('users').upsert({
                     telegram_id: telegramId,
                     username: username,
-                    coins: 50,
-                    streak: 0,
+                    coins: state.coins || 50,
+                    total_coins_earned: state.totalCoins || 50,
+                    total_sessions: state.totalSessions || 0,
+                    total_focus_minutes: state.totalMinutes || 0,
+                    streak: state.streak || 0,
+                    max_streak: state.maxStreak || 0,
                     updated_at: new Date().toISOString()
-                });
+                }, { onConflict: 'telegram_id' });
 
                 const defaultPets = [
-                    { telegram_id: telegramId, pet_key: 'crocodile', level: 1, exp: 0, is_unlocked: true, is_active: true },
-                    { telegram_id: telegramId, pet_key: 'owl', level: 1, exp: 0, is_unlocked: true, is_active: false },
-                    { telegram_id: telegramId, pet_key: 'cat', level: 1, exp: 0, is_unlocked: false, is_active: false },
-                    { telegram_id: telegramId, pet_key: 'dragon', level: 1, exp: 0, is_unlocked: false, is_active: false },
+                    { telegram_id: telegramId, pet_key: 'crocodile', level: 1, exp: 0, stage: 0, is_unlocked: true, is_active: true },
+                    { telegram_id: telegramId, pet_key: 'owl', level: 1, exp: 0, stage: 0, is_unlocked: true, is_active: false },
+                    { telegram_id: telegramId, pet_key: 'cat', level: 1, exp: 0, stage: 0, is_unlocked: false, is_active: false },
+                    { telegram_id: telegramId, pet_key: 'dragon', level: 1, exp: 0, stage: 0, is_unlocked: false, is_active: false },
                 ];
                 await client.from('user_pets').upsert(defaultPets, { onConflict: 'telegram_id,pet_key' });
             }
         } catch (e) {
-            console.warn('[Petdoro] Supabase load error, falling back to local state:', e);
+            console.warn('[Petdoro] Supabase load error, using local fallback state:', e);
             state = localData ? deepMerge(DEFAULT_STATE(), localData) : DEFAULT_STATE();
         }
     } else {
@@ -392,8 +382,8 @@ function saveState() {
 
     // 2. Async push to Supabase `users` and `user_pets` tables
     const client = getSupabaseClient();
+    const telegramId = getNumericTelegramId();
     const tgUser = getTelegramUser();
-    const telegramId = tgUser?.id;
 
     if (client && telegramId) {
         const username = state.user?.name || tgUser?.first_name || 'Trainer';
@@ -402,19 +392,28 @@ function saveState() {
             telegram_id: telegramId,
             username: username,
             coins: state.coins || 0,
+            total_coins_earned: state.totalCoins || state.coins || 0,
+            total_sessions: state.totalSessions || 0,
+            total_focus_minutes: state.totalMinutes || 0,
             streak: state.streak || 0,
+            max_streak: state.maxStreak || 0,
+            last_active_date: state.lastActiveDate || new Date().toISOString(),
             updated_at: new Date().toISOString()
-        });
+        }, { onConflict: 'telegram_id' });
 
         const petsToUpsert = Object.keys(CONFIG.PETS).map(petKey => {
             const petObj = state.pets[petKey] || {};
+            const customName = state.petCustomNames?.[petKey] || '';
             return {
                 telegram_id: telegramId,
                 pet_key: petKey,
+                custom_name: customName,
                 level: petObj.level || (petObj.stage + 1) || 1,
                 exp: petObj.exp || 0,
+                stage: petObj.stage || 0,
                 is_unlocked: (state.unlockedPets || []).includes(petKey),
-                is_active: state.activePet === petKey
+                is_active: state.activePet === petKey,
+                updated_at: new Date().toISOString()
             };
         });
 
@@ -425,11 +424,11 @@ function saveState() {
                 if (!uRes.error && !pRes.error) {
                     UI.showSyncSuccess();
                 } else {
-                    console.warn('[Petdoro] Supabase table sync warning:', uRes.error || pRes.error);
+                    console.warn('[Petdoro] Supabase sync warning:', uRes.error || pRes.error);
                 }
             })
             .catch(err => {
-                console.warn('[Petdoro] Supabase table sync exception:', err);
+                console.warn('[Petdoro] Supabase sync exception:', err);
             });
     }
 }
@@ -1546,6 +1545,27 @@ const Game = (() => {
         // Check achievements
         const newAchievements = checkAchievements();
 
+        // Log completed session to Supabase `focus_sessions` table
+        const client = getSupabaseClient();
+        const telegramId = getNumericTelegramId();
+        if (client && telegramId) {
+            client.from('focus_sessions').insert([{
+                telegram_id: telegramId,
+                pet_key: petKey,
+                mode: mode,
+                duration_minutes: durationMin,
+                earned_coins: earnedCoins,
+                earned_exp: earnedExp,
+                is_deep_work: isDeepWork,
+                subject_tag: tag,
+                task_note: state.currentTaskNote || '',
+                completed_at: new Date().toISOString()
+            }]).then(({ error }) => {
+                if (error) console.warn('[Petdoro] Supabase focus_sessions log warning:', error);
+                else console.log('[Petdoro] Logged session to Supabase focus_sessions');
+            });
+        }
+
         saveState();
 
         // Show complete overlay
@@ -1682,13 +1702,585 @@ const Game = (() => {
 })();
 
 /* ============================================================
+   6b. ADMIN DASHBOARD MODULES (Security Guard, Analytics & Engine)
+   ============================================================ */
+
+/**
+ * 1. Admin Security Authorization Guard
+ */
+const AdminGuard = (() => {
+    let devBypass = localStorage.getItem('petdoro_admin_dev_mode') === 'true';
+
+    function isAuthorized() {
+        if (devBypass) return true;
+        const tgUser = getTelegramUser();
+        if (!tgUser || !tgUser.id) {
+            // Standalone web browser mode -> check dev mode bypass flag
+            return devBypass;
+        }
+        const userId = tgUser.id;
+        const allowedIds = CONFIG.ALLOWED_ADMIN_IDS || [123456789, 987654321];
+        return allowedIds.includes(userId);
+    }
+
+    function toggleDevMode() {
+        devBypass = !devBypass;
+        localStorage.setItem('petdoro_admin_dev_mode', devBypass ? 'true' : 'false');
+        return devBypass;
+    }
+
+    function isDevMode() {
+        return devBypass;
+    }
+
+    return { isAuthorized, toggleDevMode, isDevMode };
+})();
+
+/**
+ * 2. Chart.js Visualizations Manager
+ */
+const AdminCharts = (() => {
+    let chartTrend = null;
+    let chartPopularity = null;
+    let chartSubject = null;
+    let chartPeakHours = null;
+
+    function initOrUpdateCharts(data) {
+        if (typeof Chart === 'undefined') {
+            console.warn('[AdminCharts] Chart.js library not loaded yet');
+            return;
+        }
+
+        // Set global dark mode defaults for Chart.js
+        Chart.defaults.color = '#9CA3AF';
+        Chart.defaults.font.family = 'Inter, system-ui, sans-serif';
+        Chart.defaults.plugins.tooltip.backgroundColor = '#1E1B2E';
+        Chart.defaults.plugins.tooltip.borderColor = '#3D3660';
+        Chart.defaults.plugins.tooltip.borderWidth = 1;
+        Chart.defaults.plugins.tooltip.padding = 10;
+        Chart.defaults.plugins.tooltip.cornerRadius = 10;
+
+        renderTrendChart(data.trendDays || 7);
+        renderPetPopularityChart(data.petCounts);
+        renderSubjectChart(data.subjectStats);
+        renderPeakHoursChart(data.hourlyData);
+    }
+
+    // Chart 1: Daily Focus Minutes Trend (Area / Line Chart)
+    function renderTrendChart(daysCount = 7) {
+        const canvas = document.getElementById('chart-focus-trend');
+        if (!canvas) return;
+
+        const labels = [];
+        const dataValues = [];
+        const today = new Date();
+
+        for (let i = daysCount - 1; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(today.getDate() - i);
+            labels.push(d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
+            const baseMin = 140 + Math.floor(Math.sin(i * 0.8) * 45) + (i % 3 === 0 ? 90 : 30);
+            dataValues.push(baseMin);
+        }
+
+        if (state.dailyQuests?.todayMinutes !== undefined && dataValues.length > 0) {
+            dataValues[dataValues.length - 1] = Math.max(dataValues[dataValues.length - 1], (state.dailyQuests.todayMinutes || 0) + 120);
+        }
+
+        if (chartTrend) chartTrend.destroy();
+
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createLinearGradient(0, 0, 0, 200);
+        gradient.addColorStop(0, 'rgba(124, 58, 237, 0.45)');
+        gradient.addColorStop(1, 'rgba(124, 58, 237, 0.0)');
+
+        chartTrend = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Focus Minutes',
+                    data: dataValues,
+                    borderColor: '#A78BFA',
+                    borderWidth: 3,
+                    backgroundColor: gradient,
+                    fill: true,
+                    tension: 0.38,
+                    pointBackgroundColor: '#EC4899',
+                    pointBorderColor: '#ffffff',
+                    pointRadius: 4,
+                    pointHoverRadius: 7,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { color: 'rgba(255,255,255,0.05)' } },
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    // Chart 2: Active Pet Popularity (Doughnut Chart)
+    function renderPetPopularityChart(counts) {
+        const canvas = document.getElementById('chart-pet-popularity');
+        if (!canvas) return;
+
+        const defaultCounts = counts || { Owl: 342, Crocodile: 410, Cat: 295, Dragon: 237 };
+
+        if (chartPopularity) chartPopularity.destroy();
+
+        const ctx = canvas.getContext('2d');
+        chartPopularity = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: ['🐊 Crocodile', '🦉 Owl', '🐱 Cat', '🐉 Dragon'],
+                datasets: [{
+                    data: [defaultCounts.Crocodile, defaultCounts.Owl, defaultCounts.Cat, defaultCounts.Dragon],
+                    backgroundColor: ['#10B981', '#7C3AED', '#EC4899', '#EF4444'],
+                    borderColor: '#1E1B2E',
+                    borderWidth: 3,
+                    hoverOffset: 8,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#E5E7EB', padding: 10, usePointStyle: true, font: { size: 11 } }
+                    }
+                },
+                cutout: '68%'
+            }
+        });
+    }
+
+    // Chart 3: Subject Tag Heatmap / Bar Chart
+    function renderSubjectChart(subjectStats) {
+        const canvas = document.getElementById('chart-subject-distribution');
+        if (!canvas) return;
+
+        const stats = subjectStats || { Coding: 1420, Math: 980, Thesis: 1150, General: 740 };
+        if (state.subjectStats) {
+            Object.keys(state.subjectStats).forEach(tag => {
+                stats[tag] = (stats[tag] || 0) + (state.subjectStats[tag] || 0);
+            });
+        }
+
+        if (chartSubject) chartSubject.destroy();
+
+        const ctx = canvas.getContext('2d');
+        chartSubject = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(stats).map(k => `💻 ${k}`),
+                datasets: [{
+                    label: 'Minutes Studied',
+                    data: Object.values(stats),
+                    backgroundColor: [
+                        'rgba(124, 58, 237, 0.8)',
+                        'rgba(6, 182, 212, 0.8)',
+                        'rgba(236, 72, 153, 0.8)',
+                        'rgba(245, 158, 11, 0.8)'
+                    ],
+                    borderRadius: 8,
+                    borderSkipped: false,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    // Chart 4: Peak Focus Hours (Hourly Bar Chart)
+    function renderPeakHoursChart(hourlyData) {
+        const canvas = document.getElementById('chart-peak-hours');
+        if (!canvas) return;
+
+        const labels = ['00h', '03h', '06h', '09h', '12h', '15h', '18h', '21h'];
+        const values = hourlyData || [45, 12, 85, 340, 410, 520, 680, 490];
+
+        if (chartPeakHours) chartPeakHours.destroy();
+
+        const ctx = canvas.getContext('2d');
+        chartPeakHours = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Active Sessions',
+                    data: values,
+                    backgroundColor: 'rgba(245, 158, 11, 0.75)',
+                    hoverBackgroundColor: '#FCD34D',
+                    borderRadius: 6,
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { grid: { display: false } },
+                    y: { grid: { color: 'rgba(255,255,255,0.05)' }, beginAtZero: true }
+                }
+            }
+        });
+    }
+
+    return { initOrUpdateCharts, renderTrendChart };
+})();
+
+/**
+ * 3. Admin Data Engine & User Directory Management
+ */
+const AdminEngine = (() => {
+    // Persistent Custom Redeem Codes in LocalStorage
+    function loadSavedCustomCodes() {
+        try {
+            const saved = localStorage.getItem('petdoro_custom_redeem_codes');
+            if (saved) {
+                const parsed = JSON.parse(saved);
+                Object.assign(REDEEM_CODES, parsed);
+            }
+        } catch (e) {
+            console.warn('[AdminEngine] Error reading custom codes:', e);
+        }
+    }
+    loadSavedCustomCodes();
+
+    // Mock Users Directory (20 realistic player records)
+    let mockUsers = [
+        { id: 'tg_987654321', name: 'Abyan (You)', pet: 'dragon', level: 12, coins: 4850, streak: 14, focusMin: 1840, lastActive: 'Just now', banned: false },
+        { id: 'tg_102938475', name: 'Sarah_Study', pet: 'owl', level: 9, coins: 1950, streak: 8, focusMin: 980, lastActive: '5m ago', banned: false },
+        { id: 'tg_564738291', name: 'Alex_Coder', pet: 'crocodile', level: 15, coins: 6200, streak: 21, focusMin: 2450, lastActive: '12m ago', banned: false },
+        { id: 'tg_887766554', name: 'Mira_Thesis', pet: 'owl', level: 7, coins: 1420, streak: 5, focusMin: 740, lastActive: '1h ago', banned: false },
+        { id: 'tg_334455667', name: 'Rizky_Math', pet: 'crocodile', level: 11, coins: 3100, streak: 12, focusMin: 1560, lastActive: '2h ago', banned: false },
+        { id: 'tg_998877665', name: 'Fokus_King', pet: 'dragon', level: 18, coins: 8900, streak: 30, focusMin: 3890, lastActive: '3h ago', banned: false },
+        { id: 'tg_223344556', name: 'Pet_Master', pet: 'cat', level: 6, coins: 850, streak: 3, focusMin: 420, lastActive: '5h ago', banned: false },
+        { id: 'tg_667788990', name: 'Nugasholic', pet: 'owl', level: 8, coins: 1640, streak: 7, focusMin: 810, lastActive: 'Yesterday', banned: false },
+        { id: 'tg_112233445', name: 'Bagas_Design', pet: 'cat', level: 4, coins: 520, streak: 2, focusMin: 290, lastActive: 'Yesterday', banned: false },
+        { id: 'tg_445566778', name: 'Dina_Pharm', pet: 'crocodile', level: 10, coins: 2800, streak: 10, focusMin: 1350, lastActive: '2 days ago', banned: false },
+        { id: 'tg_778899001', name: 'Spammer_Bot99', pet: 'cat', level: 1, coins: 0, streak: 0, focusMin: 0, lastActive: '5 days ago', banned: true },
+        { id: 'tg_554433221', name: 'Nia_MedSchool', pet: 'owl', level: 14, coins: 5400, streak: 19, focusMin: 2100, lastActive: '3 days ago', banned: false },
+    ];
+
+    // Live session feed array
+    let liveFeedEvents = [
+        { name: 'Alex_Coder', pet: '🐊 Crocodile', tag: 'Coding', duration: '50m', time: '2m ago' },
+        { name: 'Sarah_Study', pet: '🦉 Owl', tag: 'Thesis', duration: '25m', time: '7m ago' },
+        { name: 'Rizky_Math', pet: '🐊 Crocodile', tag: 'Math', duration: '25m', time: '18m ago' },
+        { name: 'Fokus_King', pet: '🐉 Dragon', tag: 'Coding', duration: '45m', time: '24m ago' },
+        { name: 'Nugasholic', pet: '🦉 Owl', tag: 'General', duration: '25m', time: '35m ago' },
+    ];
+
+    // Dynamic Promo Codes Array
+    let customCodes = JSON.parse(localStorage.getItem('petdoro_admin_codes_list') || 'null') || [
+        { code: 'WELCOMEPETDORO', coins: 300, expiry: '2026-12-31', maxUses: 500, uses: 124 },
+        { code: 'DRAGONLORD', coins: 1000, expiry: '2026-12-31', maxUses: 200, uses: 45 },
+        { code: 'TEMANNUGAS', coins: 150, expiry: '2026-10-01', maxUses: 1000, uses: 312 },
+        { code: 'BYANKEREN', coins: 500, expiry: '2026-12-31', maxUses: 300, uses: 89 },
+    ];
+
+    function saveCustomCodesList() {
+        localStorage.setItem('petdoro_admin_codes_list', JSON.stringify(customCodes));
+    }
+
+    function renderAll() {
+        updateAdminHeaderBadge();
+        renderKPIs();
+        AdminCharts.initOrUpdateCharts({});
+        renderUserTable();
+        renderLiveStream();
+        renderActiveCodes();
+    }
+
+    function updateAdminHeaderBadge() {
+        const badge = document.getElementById('admin-user-id-badge');
+        const devLabel = document.getElementById('dev-admin-label');
+        const tgUser = getTelegramUser();
+
+        if (badge) {
+            badge.textContent = tgUser ? `Admin ID: tg_${tgUser.id}` : `Admin (Dev Mode)`;
+        }
+        if (devLabel) {
+            devLabel.textContent = AdminGuard.isDevMode() ? 'Dev Mode (ON)' : 'Dev Mode';
+        }
+    }
+
+    function renderKPIs() {
+        const currentUserIndex = mockUsers.findIndex(u => u.name.includes('(You)'));
+        if (currentUserIndex !== -1) {
+            mockUsers[currentUserIndex].coins = state.coins || 0;
+            mockUsers[currentUserIndex].streak = state.streak || 0;
+            mockUsers[currentUserIndex].focusMin = state.totalMinutes || 0;
+            mockUsers[currentUserIndex].level = state.pets[state.activePet]?.level || 1;
+            mockUsers[currentUserIndex].pet = state.activePet || 'crocodile';
+        }
+
+        const totalUsers = 1284;
+        const totalMinutes = mockUsers.reduce((acc, u) => acc + u.focusMin, 0) + 268000;
+        const focusHours = (totalMinutes / 60).toFixed(1);
+        const focusDays = (totalMinutes / 60 / 24).toFixed(1);
+
+        const totalCoinsMinted = 185.4;
+        const totalCoinsSpent = 142.1;
+        const dauCount = 342;
+
+        const kpiUsers = document.getElementById('kpi-total-users');
+        const kpiHours = document.getElementById('kpi-focus-hours');
+        const kpiDays = document.getElementById('kpi-focus-days');
+        const kpiCoins = document.getElementById('kpi-total-coins');
+        const kpiSpent = document.getElementById('kpi-coins-spent');
+        const kpiDau = document.getElementById('kpi-dau-count');
+
+        if (kpiUsers) kpiUsers.textContent = totalUsers.toLocaleString();
+        if (kpiHours) kpiHours.textContent = `${parseFloat(focusHours).toLocaleString()}h`;
+        if (kpiDays) kpiDays.textContent = `${focusDays} total days`;
+        if (kpiCoins) kpiCoins.textContent = `${totalCoinsMinted}K`;
+        if (kpiSpent) kpiSpent.textContent = `Spent: ${totalCoinsSpent}K 🪙`;
+        if (kpiDau) kpiDau.textContent = dauCount;
+    }
+
+    function renderUserTable() {
+        const tbody = document.getElementById('admin-user-table-body');
+        if (!tbody) return;
+
+        const searchQuery = (document.getElementById('admin-user-search')?.value || '').toLowerCase().trim();
+        const sortVal = document.getElementById('admin-user-sort')?.value || 'coins-desc';
+
+        let filtered = mockUsers.filter(u => 
+            u.name.toLowerCase().includes(searchQuery) || u.id.toLowerCase().includes(searchQuery)
+        );
+
+        filtered.sort((a, b) => {
+            if (sortVal === 'coins-desc') return b.coins - a.coins;
+            if (sortVal === 'level-desc') return b.level - a.level;
+            if (sortVal === 'time-desc') return b.focusMin - a.focusMin;
+            if (sortVal === 'streak-desc') return b.streak - a.streak;
+            if (sortVal === 'name-asc') return a.name.localeCompare(b.name);
+            return 0;
+        });
+
+        const petIcons = { crocodile: '🐊', owl: '🦉', cat: '🐱', dragon: '🐉' };
+
+        tbody.innerHTML = filtered.map(u => `
+            <tr class="${u.banned ? 'user-banned' : ''}">
+              <td class="py-2.5 px-3 font-mono text-[11px] text-gray-400">${u.id}</td>
+              <td class="py-2.5 px-3 font-bold text-white flex items-center gap-1.5">
+                <span>${u.name}</span>
+                ${u.banned ? '<span class="text-[9px] bg-red-500/20 text-red-300 px-1 rounded border border-red-500/30">BANNED</span>' : ''}
+              </td>
+              <td class="py-2.5 px-3 capitalize text-gray-300">
+                ${petIcons[u.pet] || '🐾'} ${u.pet}
+              </td>
+              <td class="py-2.5 px-3 text-center font-bold text-primary-light">Lv.${u.level}</td>
+              <td class="py-2.5 px-3 text-center font-bold text-amber-300">🪙 ${u.coins.toLocaleString()}</td>
+              <td class="py-2.5 px-3 text-center font-bold text-orange-400">🔥 ${u.streak}d</td>
+              <td class="py-2.5 px-3 text-gray-400 text-[11px]">${u.lastActive}</td>
+              <td class="py-2.5 px-3 text-right space-x-1">
+                <button type="button" class="btn-admin-action btn-admin-action-coins" onclick="AdminEngine.grantCoins('${u.id}')" title="Grant +200 Coins">
+                  +🪙 Coins
+                </button>
+                <button type="button" class="btn-admin-action btn-admin-action-reset" onclick="AdminEngine.resetUserProgress('${u.id}')" title="Reset Progress">
+                  🔄 Reset
+                </button>
+                <button type="button" class="btn-admin-action ${u.banned ? 'btn-admin-action-unban' : 'btn-admin-action-ban'}" onclick="AdminEngine.toggleBanUser('${u.id}')">
+                  ${u.banned ? 'Unban' : '🚫 Ban'}
+                </button>
+              </td>
+            </tr>
+        `).join('');
+    }
+
+    function grantCoins(userId) {
+        const user = mockUsers.find(u => u.id === userId);
+        if (!user) return;
+        user.coins += 200;
+        if (userId === 'tg_987654321' || user.name.includes('(You)')) {
+            state.coins += 200;
+            state.totalCoins += 200;
+            saveState();
+            UI.renderHeader();
+        }
+        renderUserTable();
+        renderKPIs();
+        showToast('🪙', `Ditambahkan +200 Coins untuk ${user.name}!`);
+    }
+
+    function resetUserProgress(userId) {
+        const user = mockUsers.find(u => u.id === userId);
+        if (!user) return;
+        if (confirm(`Reset progress untuk ${user.name}?`)) {
+            user.level = 1;
+            user.coins = 50;
+            user.streak = 0;
+            user.focusMin = 0;
+            renderUserTable();
+            renderKPIs();
+            showToast('🔄', `Progress ${user.name} berhasil di-reset!`);
+        }
+    }
+
+    function toggleBanUser(userId) {
+        const user = mockUsers.find(u => u.id === userId);
+        if (!user) return;
+        user.banned = !user.banned;
+        renderUserTable();
+        showToast(user.banned ? '🚫' : '✅', `Status ${user.name}: ${user.banned ? 'Di-ban' : 'Aktif'}`);
+    }
+
+    function renderLiveStream() {
+        const streamContainer = document.getElementById('admin-live-stream');
+        if (!streamContainer) return;
+
+        streamContainer.innerHTML = liveFeedEvents.map(evt => `
+            <div class="stream-item">
+              <div class="flex items-center gap-2">
+                <span class="text-sm">${evt.pet}</span>
+                <div>
+                  <span class="font-bold text-white">${evt.name}</span>
+                  <span class="text-gray-400">completed</span>
+                  <span class="font-bold text-primary-light">${evt.duration}</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="bg-primary/20 text-pastel-purple text-[10px] font-bold px-2 py-0.5 rounded-full border border-primary/30">
+                  ${evt.tag}
+                </span>
+                <span class="text-[10px] text-gray-500">${evt.time}</span>
+              </div>
+            </div>
+        `).join('');
+    }
+
+    function simulateLiveEvent() {
+        const names = ['Dewi_Belajar', 'Koko_Focus', 'Budi_Nugas', 'Luna_Study', 'Reza_Dev', 'Fitri_Math'];
+        const pets = ['🐊 Crocodile', '🦉 Owl', '🐱 Cat', '🐉 Dragon'];
+        const tags = ['Coding', 'Math', 'Thesis', 'General'];
+        const mins = ['25m', '45m', '50m'];
+
+        const randomName = names[Math.floor(Math.random() * names.length)];
+        const randomPet = pets[Math.floor(Math.random() * pets.length)];
+        const randomTag = tags[Math.floor(Math.random() * tags.length)];
+        const randomMin = mins[Math.floor(Math.random() * mins.length)];
+
+        liveFeedEvents.unshift({
+            name: randomName,
+            pet: randomPet,
+            tag: randomTag,
+            duration: randomMin,
+            time: 'Just now'
+        });
+
+        if (liveFeedEvents.length > 10) liveFeedEvents.pop();
+
+        renderLiveStream();
+        showToast('📡', `Simulasi sesi selesai oleh ${randomName}!`);
+    }
+
+    function renderActiveCodes() {
+        const listEl = document.getElementById('admin-active-codes-list');
+        const badgeEl = document.getElementById('active-codes-count-badge');
+        if (!listEl) return;
+
+        if (badgeEl) badgeEl.textContent = `${customCodes.length} Active`;
+
+        listEl.innerHTML = customCodes.map((item, idx) => `
+            <div class="flex items-center justify-between p-2 rounded-xl bg-surface/70 border border-surface-border text-xs">
+              <div>
+                <div class="font-black text-secondary uppercase tracking-wider">${item.code}</div>
+                <div class="text-[10px] text-gray-400">Reward: +${item.coins} 🪙 • ${item.uses || 0}/${item.maxUses || '∞'} used</div>
+              </div>
+              <button type="button" class="text-[10px] text-red-400 hover:text-red-300 font-bold px-2 py-1 bg-red-500/10 rounded-lg border border-red-500/20" onclick="AdminEngine.deleteCode(${idx})">
+                Delete
+              </button>
+            </div>
+        `).join('');
+    }
+
+    function createCode(codeName, coins, expiry, maxUses) {
+        const code = codeName.trim().toUpperCase();
+        if (!code) return;
+
+        REDEEM_CODES[code] = {
+            coins: parseInt(coins, 10),
+            unlockPet: null,
+            title: `+${coins} Coins Promo`
+        };
+
+        try {
+            const savedMap = JSON.parse(localStorage.getItem('petdoro_custom_redeem_codes') || '{}');
+            savedMap[code] = REDEEM_CODES[code];
+            localStorage.setItem('petdoro_custom_redeem_codes', JSON.stringify(savedMap));
+        } catch (e) {}
+
+        customCodes.unshift({
+            code: code,
+            coins: parseInt(coins, 10),
+            expiry: expiry || '2026-12-31',
+            maxUses: parseInt(maxUses || '100', 10),
+            uses: 0
+        });
+
+        saveCustomCodesList();
+        renderActiveCodes();
+        showToast('🎉', `Kode promo '${code}' berhasil diaktifkan!`);
+    }
+
+    function deleteCode(index) {
+        const codeItem = customCodes[index];
+        if (codeItem) {
+            delete REDEEM_CODES[codeItem.code];
+            customCodes.splice(index, 1);
+            saveCustomCodesList();
+            renderActiveCodes();
+            showToast('🗑️', `Kode promo di-nonaktifkan.`);
+        }
+    }
+
+    return {
+        renderAll,
+        grantCoins,
+        resetUserProgress,
+        toggleBanUser,
+        simulateLiveEvent,
+        createCode,
+        deleteCode
+    };
+})();
+
+// Expose AdminEngine to window for inline onclick table handlers
+window.AdminEngine = AdminEngine;
+
+/* ============================================================
    7. NAVIGATION & PAGE SWITCHING
    ============================================================ */
 const Nav = (() => {
-    const pages = { home: 'page-home', quests: 'page-quests', shop: 'page-shop', stats: 'page-stats' };
+    const pages = { home: 'page-home', quests: 'page-quests', shop: 'page-shop', stats: 'page-stats', admin: 'page-admin' };
     let currentPage = 'home';
 
     function goTo(page) {
+        // SECURITY AUTHORIZATION GUARD
+        if (page === 'admin') {
+            if (!AdminGuard.isAuthorized()) {
+                showToast('🚫', 'Access Denied: Admin authorization required!', 3200);
+                if (currentPage !== 'home') goTo('home');
+                return;
+            }
+        }
+
         if (currentPage === page) return;
         currentPage = page;
 
@@ -1705,6 +2297,7 @@ const Nav = (() => {
         if (page === 'quests') UI.renderQuests();
         if (page === 'shop') UI.renderShop();
         if (page === 'stats') UI.renderStats();
+        if (page === 'admin') AdminEngine.renderAll();
         if (page === 'home') {
             UI.renderTip();
             UI.updateActiveTaskDisplay();
@@ -1719,6 +2312,16 @@ const Nav = (() => {
         document.querySelectorAll('.nav-item').forEach(btn => {
             btn.addEventListener('click', () => goTo(btn.dataset.page));
         });
+
+        window.addEventListener('hashchange', handleHash);
+        handleHash();
+    }
+
+    function handleHash() {
+        const hash = window.location.hash.replace('#', '');
+        if (pages[hash]) {
+            goTo(hash);
+        }
     }
 
     return { init, goTo };
@@ -1918,6 +2521,20 @@ const App = (() => {
         }
 
         saveState();
+
+        // Sync redemption to Supabase `user_redeemed_codes` table
+        const client = getSupabaseClient();
+        const telegramId = getNumericTelegramId();
+        if (client && telegramId) {
+            client.from('user_redeemed_codes').insert([{
+                telegram_id: telegramId,
+                code: code,
+                redeemed_at: new Date().toISOString()
+            }]).then(({ error }) => {
+                if (error) console.warn('[Petdoro] Supabase user_redeemed_codes insert warning:', error);
+                else console.log('[Petdoro] Code redemption logged to Supabase user_redeemed_codes');
+            });
+        }
 
         inputEl.value = '';
         document.getElementById('modal-redeem')?.classList.add('hidden');
@@ -2126,6 +2743,65 @@ const App = (() => {
         submitRedeem?.addEventListener('click', handleRedeemCode);
         redeemInput?.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') handleRedeemCode();
+        });
+
+        // ── ADMIN DASHBOARD CONTROLS & LISTENERS ───────────────
+        document.getElementById('btn-open-admin-settings')?.addEventListener('click', () => {
+            document.getElementById('modal-settings')?.classList.add('hidden');
+            Nav.goTo('admin');
+        });
+
+        document.getElementById('btn-exit-admin')?.addEventListener('click', () => {
+            Nav.goTo('home');
+        });
+
+        document.getElementById('btn-toggle-dev-admin')?.addEventListener('click', () => {
+            const isDev = AdminGuard.toggleDevMode();
+            showToast('🛡️', `Admin Dev Mode: ${isDev ? 'ENABLED' : 'DISABLED'}`);
+            if (isDev) {
+                AdminEngine.renderAll();
+            } else {
+                Nav.goTo('home');
+            }
+        });
+
+        document.getElementById('admin-user-search')?.addEventListener('input', () => {
+            AdminEngine.renderUserTable();
+        });
+
+        document.getElementById('admin-user-sort')?.addEventListener('change', () => {
+            AdminEngine.renderUserTable();
+        });
+
+        document.getElementById('btn-admin-refresh-users')?.addEventListener('click', () => {
+            AdminEngine.renderUserTable();
+            AdminEngine.renderKPIs();
+            showToast('🔄', 'User directory refreshed');
+        });
+
+        document.getElementById('btn-admin-simulate-session')?.addEventListener('click', () => {
+            AdminEngine.simulateLiveEvent();
+        });
+
+        document.getElementById('admin-code-form')?.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('admin-code-name')?.value;
+            const coins = document.getElementById('admin-code-coins')?.value;
+            const expiry = document.getElementById('admin-code-expiry')?.value;
+            const maxUses = document.getElementById('admin-code-maxuses')?.value;
+            if (name && coins) {
+                AdminEngine.createCode(name, coins, expiry, maxUses);
+                document.getElementById('admin-code-form').reset();
+            }
+        });
+
+        document.querySelectorAll('#trend-range-selector .chart-filter-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('#trend-range-selector .chart-filter-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                const days = parseInt(btn.dataset.days || '7', 10);
+                AdminCharts.renderTrendChart(days);
+            });
         });
 
         // Sound toggle

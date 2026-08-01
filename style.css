@@ -1106,5 +1106,124 @@ body {
   animation: happyJump 1.2s ease-in-out infinite !important;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   ADMIN DASHBOARD CUSTOM STYLES
+   ═══════════════════════════════════════════════════════════ */
+
+/* Allow main app container to expand on desktop when Admin screen is active */
+#app:has(#page-admin:not(.hidden)) {
+  max-width: 56rem !important; /* 4xl responsive layout */
+  transition: max-width 0.4s ease-in-out;
+}
+
+/* Chart filter range buttons */
+.chart-filter-btn {
+  padding: 3px 8px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 800;
+  color: #9CA3AF;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.chart-filter-btn.active, .chart-filter-btn:hover {
+  background: rgba(124, 58, 237, 0.3);
+  color: #A78BFA;
+  border-color: rgba(167, 139, 250, 0.5);
+  box-shadow: 0 0 10px rgba(124, 58, 237, 0.2);
+}
+
+/* Custom scrollbar for tables & feeds */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: rgba(30, 27, 46, 0.5);
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.4);
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(236, 72, 153, 0.6);
+}
+
+/* User management action buttons */
+.btn-admin-action {
+  padding: 4px 8px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.btn-admin-action-coins {
+  background: rgba(245, 158, 11, 0.15);
+  color: #FCD34D;
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+.btn-admin-action-coins:hover {
+  background: rgba(245, 158, 11, 0.3);
+}
+.btn-admin-action-reset {
+  background: rgba(124, 58, 237, 0.15);
+  color: #C4B5FD;
+  border: 1px solid rgba(124, 58, 237, 0.3);
+}
+.btn-admin-action-reset:hover {
+  background: rgba(124, 58, 237, 0.3);
+}
+.btn-admin-action-ban {
+  background: rgba(239, 68, 68, 0.15);
+  color: #FCA5A5;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+.btn-admin-action-ban:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+.btn-admin-action-unban {
+  background: rgba(16, 185, 129, 0.15);
+  color: #6EE7B7;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+.btn-admin-action-unban:hover {
+  background: rgba(16, 185, 129, 0.3);
+}
+
+/* User table row styling */
+#admin-user-table-body tr {
+  transition: background-color 0.2s ease;
+}
+#admin-user-table-body tr:hover {
+  background-color: rgba(124, 58, 237, 0.08);
+}
+
+/* Banned user status row overlay */
+tr.user-banned {
+  opacity: 0.6;
+  background-color: rgba(239, 68, 68, 0.08) !important;
+}
+
+/* Live Stream Item */
+.stream-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: rgba(30, 27, 46, 0.6);
+  border: 1px solid rgba(61, 54, 96, 0.6);
+  border-radius: 14px;
+  font-size: 11px;
+  animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+
 
 
