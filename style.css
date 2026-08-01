@@ -1121,6 +1121,13 @@ body {
   transition: max-width 0.4s ease-in-out;
 }
 
+@media (min-width: 768px) {
+  #app:has(#page-admin:not(.hidden)) {
+    max-width: 72rem !important; /* 6xl wide desktop layout */
+    width: 100% !important;
+  }
+}
+
 /* Chart filter range buttons */
 .chart-filter-btn {
   padding: 3px 8px;

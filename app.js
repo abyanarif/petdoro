@@ -1713,11 +1713,22 @@ const Game = (() => {
 const AdminGuard = (() => {
     let devBypass = localStorage.getItem('petdoro_admin_dev_mode') === 'true';
 
+    function getSessionAdminId() {
+        const stored = localStorage.getItem('petdoro_admin_session');
+        return stored ? parseInt(stored, 10) : null;
+    }
+
     function isAuthorized() {
         if (devBypass) return true;
         if (state.user?.is_admin === true) return true;
-        const numericId = getNumericTelegramId();
+
+        const sessionAdminId = getSessionAdminId();
         const allowedIds = CONFIG.ALLOWED_ADMIN_IDS || [123456789, 987654321, 777000];
+        if (sessionAdminId && (allowedIds.includes(sessionAdminId) || state.user?.telegram_id === sessionAdminId)) {
+            return true;
+        }
+
+        const numericId = getNumericTelegramId();
         return allowedIds.includes(numericId);
     }
 
@@ -1732,6 +1743,16 @@ const AdminGuard = (() => {
         return devBypass;
     }
 
+    function logoutAdmin() {
+        localStorage.removeItem('petdoro_admin_session');
+        localStorage.removeItem('petdoro_admin_dev_mode');
+        devBypass = false;
+        if (state.user) state.user.is_admin = false;
+        updateUIVisibility();
+        showToast('🚪', 'Admin Logout: Sesi admin telah ditutup.', 3000);
+        Nav.goTo('home');
+    }
+
     function updateUIVisibility() {
         const adminElements = document.querySelectorAll('.admin-only-ui, #admin-settings-row');
         const authorized = isAuthorized();
@@ -1744,7 +1765,71 @@ const AdminGuard = (() => {
         });
     }
 
-    return { isAuthorized, toggleDevMode, isDevMode, updateUIVisibility };
+    async function checkUrlAndSessionAuth() {
+        const urlParams = new URLSearchParams(window.location.search);
+        let urlAdminId = urlParams.get('admin_id');
+
+        // Also check hash string for admin_id parameter
+        if (!urlAdminId && window.location.hash.includes('admin_id=')) {
+            const hashParts = window.location.hash.split('?')[1] || window.location.hash.split('#')[1];
+            if (hashParts) {
+                const hp = new URLSearchParams(hashParts);
+                urlAdminId = hp.get('admin_id');
+            }
+        }
+
+        const client = getSupabaseClient();
+        const targetAdminId = urlAdminId ? parseInt(urlAdminId, 10) : getSessionAdminId();
+        const allowedIds = CONFIG.ALLOWED_ADMIN_IDS || [123456789, 987654321, 777000];
+
+        if (targetAdminId) {
+            console.log('[Petdoro] Verifying Admin ID from URL or Session:', targetAdminId);
+            let isValid = false;
+
+            if (allowedIds.includes(targetAdminId)) {
+                isValid = true;
+            } else if (client) {
+                try {
+                    const { data: uRow, error: uErr } = await client
+                        .from('users')
+                        .select('telegram_id, is_admin')
+                        .eq('telegram_id', targetAdminId)
+                        .maybeSingle();
+
+                    if (!uErr && uRow && uRow.is_admin) {
+                        isValid = true;
+                    }
+                } catch (e) {
+                    console.warn('[Petdoro] Admin verification failed via Supabase query:', e);
+                }
+            }
+
+            if (isValid) {
+                console.log('[Petdoro] Admin access VERIFIED for ID:', targetAdminId);
+                localStorage.setItem('petdoro_admin_session', targetAdminId.toString());
+                if (!state.user) state.user = {};
+                state.user.is_admin = true;
+                updateUIVisibility();
+
+                if (urlAdminId) {
+                    setTimeout(() => {
+                        showToast('🛡️', 'Akses Admin Diverifikasi! Selamat datang.', 3500);
+                        Nav.goTo('admin');
+                    }, 400);
+                }
+            } else {
+                console.warn('[Petdoro] Invalid Admin ID attempt:', targetAdminId);
+                localStorage.removeItem('petdoro_admin_session');
+                if (state.user) state.user.is_admin = false;
+                updateUIVisibility();
+                if (urlAdminId) {
+                    showToast('⛔', 'Akses Admin Ditolak: ID tidak terdaftar sebagai Admin.', 3500);
+                }
+            }
+        }
+    }
+
+    return { isAuthorized, toggleDevMode, isDevMode, logoutAdmin, updateUIVisibility, checkUrlAndSessionAuth };
 })();
 
 /**
@@ -2766,6 +2851,10 @@ const App = (() => {
             Nav.goTo('home');
         });
 
+        document.getElementById('btn-logout-admin')?.addEventListener('click', () => {
+            AdminGuard.logoutAdmin();
+        });
+
         document.getElementById('btn-toggle-dev-admin')?.addEventListener('click', () => {
             const isDev = AdminGuard.toggleDevMode();
             showToast('🛡️', `Admin Dev Mode: ${isDev ? 'ENABLED' : 'DISABLED'}`);
@@ -2979,6 +3068,7 @@ const App = (() => {
     // ── INIT ──────────────────────────────────────────────────
     async function init() {
         await loadState();
+        await AdminGuard.checkUrlAndSessionAuth();
         initTelegram();
 
         const onboardingOverlay = document.getElementById('onboarding-overlay');
