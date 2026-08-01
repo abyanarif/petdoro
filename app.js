@@ -301,6 +301,7 @@ async function loadState() {
                 state.streak = userRow.streak !== undefined ? userRow.streak : (state.streak || 0);
                 state.maxStreak = userRow.max_streak !== undefined ? userRow.max_streak : (state.maxStreak || state.streak || 0);
                 if (userRow.username) state.user.name = userRow.username;
+                if (userRow.is_admin !== undefined) state.user.is_admin = userRow.is_admin === true;
 
                 if (petRows && Array.isArray(petRows) && petRows.length > 0) {
                     petRows.forEach(p => {
@@ -370,6 +371,7 @@ async function loadState() {
     }
 
     sanitizeLoadedState();
+    AdminGuard.updateUIVisibility();
 }
 
 function saveState() {
@@ -1713,19 +1715,16 @@ const AdminGuard = (() => {
 
     function isAuthorized() {
         if (devBypass) return true;
-        const tgUser = getTelegramUser();
-        if (!tgUser || !tgUser.id) {
-            // Standalone web browser mode -> check dev mode bypass flag
-            return devBypass;
-        }
-        const userId = tgUser.id;
-        const allowedIds = CONFIG.ALLOWED_ADMIN_IDS || [123456789, 987654321];
-        return allowedIds.includes(userId);
+        if (state.user?.is_admin === true) return true;
+        const numericId = getNumericTelegramId();
+        const allowedIds = CONFIG.ALLOWED_ADMIN_IDS || [123456789, 987654321, 777000];
+        return allowedIds.includes(numericId);
     }
 
     function toggleDevMode() {
         devBypass = !devBypass;
         localStorage.setItem('petdoro_admin_dev_mode', devBypass ? 'true' : 'false');
+        updateUIVisibility();
         return devBypass;
     }
 
@@ -1733,7 +1732,19 @@ const AdminGuard = (() => {
         return devBypass;
     }
 
-    return { isAuthorized, toggleDevMode, isDevMode };
+    function updateUIVisibility() {
+        const adminElements = document.querySelectorAll('.admin-only-ui, #admin-settings-row');
+        const authorized = isAuthorized();
+        adminElements.forEach(el => {
+            if (authorized) {
+                el.classList.remove('hidden');
+            } else {
+                el.classList.add('hidden');
+            }
+        });
+    }
+
+    return { isAuthorized, toggleDevMode, isDevMode, updateUIVisibility };
 })();
 
 /**
@@ -2272,10 +2283,10 @@ const Nav = (() => {
     let currentPage = 'home';
 
     function goTo(page) {
-        // SECURITY AUTHORIZATION GUARD
+        // STRICT ROUTE GUARD: Prevent Direct Navigation
         if (page === 'admin') {
             if (!AdminGuard.isAuthorized()) {
-                showToast('🚫', 'Access Denied: Admin authorization required!', 3200);
+                showToast('⛔', 'Akses Ditolak: Fitur ini khusus Admin.', 3200);
                 if (currentPage !== 'home') goTo('home');
                 return;
             }
@@ -3007,6 +3018,7 @@ const App = (() => {
 
         window._postOnboardingInit = () => {
             UI.renderAll();
+            AdminGuard.updateUIVisibility();
         };
 
         const ts = Timer.getState();
@@ -3021,6 +3033,7 @@ const App = (() => {
         checkStreakOnLoad();
         startTipRotation();
         UI.setMood('idle');
+        AdminGuard.updateUIVisibility();
 
         checkAndRecoverTimerSession();
 

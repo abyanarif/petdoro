@@ -1110,6 +1110,11 @@ body {
    ADMIN DASHBOARD CUSTOM STYLES
    ═══════════════════════════════════════════════════════════ */
 
+/* Admin UI Visibility Guard */
+.admin-only-ui.hidden {
+  display: none !important;
+}
+
 /* Allow main app container to expand on desktop when Admin screen is active */
 #app:has(#page-admin:not(.hidden)) {
   max-width: 56rem !important; /* 4xl responsive layout */
